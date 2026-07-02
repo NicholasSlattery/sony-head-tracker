@@ -2,10 +2,12 @@
 // =============================================================================
 // XM5 Head Tracker Bridge -- single-file edition
 //
-// A native Windows 11 bridge that turns a Sony WH-1000XM5's Android Head Tracker
-// HID sensor into usable head-tracking data. It discovers the headset's HID
-// top-level collection (or the Windows Sensor API custom sensor), validates the
-// "#AndroidHeadTracker#" marker, enables reporting, parses orientation, and:
+// A native Windows 11 bridge that turns any headset implementing the Android
+// Head Tracker HID protocol (Sony WH-1000XM5 and others) into usable
+// head-tracking data. It discovers the headset's HID top-level collection (or
+// the Windows Sensor API custom sensor), validates the "#AndroidHeadTracker#"
+// marker, resolves which paired Bluetooth headset the sensor belongs to,
+// enables reporting, parses orientation, and:
 //   * shows a diagnostics GUI with a live yaw/pitch/roll graph, a Refresh button,
 //     a one-click Repair Tracker button, axis controls, and Recenter (Ctrl+Alt+C);
 //   * streams orientation over UDP as OpenTrack doubles plus a JSON datagram.
@@ -35,8 +37,8 @@
 //   xm5-headtracker.exe probe [--include-disabled]
 //   xm5-headtracker.exe dump [--seconds N]
 //   xm5-headtracker.exe repair
-//   xm5-headtracker.exe bluetooth-probe [--all-le] [--name "WH-1000XM5"]
-//   xm5-headtracker.exe bluetooth-rebind [--name "WH-1000XM5"]
+//   xm5-headtracker.exe bluetooth-probe [--all-le] [--name FILTER]
+//   xm5-headtracker.exe bluetooth-rebind [--name FILTER]   (default: auto-detect)
 //   xm5-headtracker.exe bluetooth-generic-hid           (run elevated)
 //   xm5-headtracker.exe bridge [--port 4242] [--seconds N]
 //                              [--axis-map YXZ] [--invert XZ] [--smoothing 0.18]
@@ -153,7 +155,7 @@ using Microsoft::WRL::ComPtr;
 namespace xm5 {
 
 // Project version -- keep in sync with CHANGELOG.md and release tags.
-inline constexpr std::wstring_view kVersion = L"1.0.0";
+inline constexpr std::wstring_view kVersion = L"1.1.0";
 
 struct Vec3 {
     double x{};
@@ -227,6 +229,7 @@ struct DeviceInfo {
     std::wstring instanceId;
     std::wstring product;
     std::wstring manufacturer;
+    std::wstring bluetoothName;   // paired Bluetooth device name, resolved via the PnP parent chain
     std::uint16_t usagePage{};
     std::uint16_t usage{};
     std::uint16_t vendorId{};
@@ -436,6 +439,11 @@ std::vector<double> decodePackedDescriptorValues(std::span<const std::uint8_t> p
 //  Raw HID backend
 // =============================================================================
 namespace xm5 {
+
+// Bluetooth helpers, defined in the Bluetooth section below. The HID backend
+// uses them to resolve which paired headset a head-tracker HID node belongs to.
+std::wstring bluetoothNameForHidInstance(std::wstring_view instanceId);
+std::vector<std::wstring> pairedBluetoothDeviceNames();
 
 class HidBackend {
 public:
@@ -704,8 +712,10 @@ std::vector<DeviceInfo> HidBackend::enumerate(bool presentInterfacesOnly) {
         if(info.usagePage==kSensorPage&&info.usage==kOtherCustom) {
             info.sensorDescription=extractDescription(handle.value,ppd.value,caps,features,info.featureValues);
             info.androidHeadTracker=info.sensorDescription.starts_with(kMarker);
+            info.bluetoothName=bluetoothNameForHidInstance(info.instanceId);
             Logger::instance().write(info.androidHeadTracker?LogLevel::info:LogLevel::warning,
-                std::format(L"Candidate HID VID={:04X} PID={:04X}, description='{}'",info.vendorId,info.productId,
+                std::format(L"Candidate HID VID={:04X} PID={:04X}, headset='{}', description='{}'",info.vendorId,info.productId,
+                    info.bluetoothName.empty()?L"(unresolved)":info.bluetoothName,
                     std::wstring(info.sensorDescription.begin(),info.sensorDescription.end())));
         }
         devices.push_back(std::move(info));
@@ -880,13 +890,15 @@ void SensorBackend::disconnect(){running_=false;if(reader_.joinable()){reader_.r
 namespace xm5 {
 
 struct BluetoothProbeOptions {
-    std::wstring_view nameFilter{L"WH-1000XM5"};
+    std::wstring_view nameFilter{};   // empty = probe every paired device
     bool probeAllLeDevices{};
 };
 
 // Performs read-only Bluetooth Classic SDP and BLE GATT discovery.
 // Returns 0 when a matching paired Classic device was queried, 2 when none matched.
 int runBluetoothProbe(const BluetoothProbeOptions& options, std::wostream& output);
+// An empty nameFilter auto-detects the headset whose SDP record carries the
+// Android Head Tracker HID descriptor, so no other paired device is touched.
 int rebindBluetoothHid(std::wstring_view nameFilter, std::wostream& output);
 int useGenericHidDriver(std::wostream& output);
 
@@ -917,6 +929,36 @@ bool containsInsensitive(std::wstring_view text,std::wstring_view needle){return
 
 std::wstring addressText(BLUETOOTH_ADDRESS address){
     return std::format(L"{:02X}:{:02X}:{:02X}:{:02X}:{:02X}:{:02X}",address.rgBytes[5],address.rgBytes[4],address.rgBytes[3],address.rgBytes[2],address.rgBytes[1],address.rgBytes[0]);
+}
+
+// Extracts the 48-bit Bluetooth address embedded in a BTHENUM PnP instance ID.
+// Device nodes look like BTHENUM\Dev_F8DF15AABBCC\...; service child nodes end
+// with ...&0&F8DF15AABBCC_C00000000. Service GUIDs also contain 12-hex-digit
+// runs, so the match is anchored to a "Dev_" prefix or a '&' delimiter.
+bool addressFromBthenumId(std::wstring_view id,BLUETOOTH_ADDRESS& address){
+    std::wstring text(id);std::ranges::transform(text,text.begin(),[](wchar_t c){return static_cast<wchar_t>(towupper(c));});
+    const auto isHex=[](wchar_t c){return (c>=L'0'&&c<=L'9')||(c>=L'A'&&c<=L'F');};
+    const auto tryParse=[&](std::size_t pos){
+        if(pos+12>text.size())return false;
+        for(std::size_t i=0;i<12;++i)if(!isHex(text[pos+i]))return false;
+        if(pos+12<text.size()&&isHex(text[pos+12]))return false;
+        std::uint64_t value{};for(std::size_t i=0;i<12;++i){const auto c=text[pos+i];value=(value<<4)|static_cast<std::uint64_t>(c<=L'9'?c-L'0':c-L'A'+10);}
+        if(!value)return false;address.ullLong=value;return true;
+    };
+    if(const auto dev=text.find(L"DEV_");dev!=std::wstring::npos&&tryParse(dev+4))return true;
+    for(auto pos=text.find(L'&');pos!=std::wstring::npos;pos=text.find(L'&',pos+1))if(tryParse(pos+1))return true;
+    return false;
+}
+
+// Enumerates paired Classic Bluetooth devices across all local radios.
+std::vector<BLUETOOTH_DEVICE_INFO> pairedClassicDevices(){
+    std::vector<BLUETOOTH_DEVICE_INFO> result;
+    BLUETOOTH_DEVICE_SEARCH_PARAMS search{};search.dwSize=sizeof(search);search.fReturnAuthenticated=TRUE;search.fReturnRemembered=TRUE;search.fReturnConnected=TRUE;
+    BLUETOOTH_DEVICE_INFO device{};device.dwSize=sizeof(device);
+    FindDeviceHandle find;find.value=BluetoothFindFirstDevice(&search,&device);
+    if(!find.value)return result;
+    do{result.push_back(device);device={};device.dwSize=sizeof(device);}while(BluetoothFindNextDevice(find.value,&device));
+    return result;
 }
 
 bool hasPresentBluetoothHidChild(BLUETOOTH_ADDRESS address){
@@ -1006,20 +1048,30 @@ BOOL CALLBACK sdpAttribute(ULONG id,LPBYTE value,ULONG length,LPVOID rawContext)
     return TRUE;
 }
 
-bool queryClassicSdp(const BLUETOOTH_DEVICE_INFO& device,std::wostream& out){
+struct ClassicSdpSummary{bool recordReturned{};bool androidDescriptor{};};
+
+ClassicSdpSummary queryClassicSdp(const BLUETOOTH_DEVICE_INFO& device,std::wostream& out){
+    ClassicSdpSummary summary;
     SOCKADDR_BTH socketAddress{};socketAddress.addressFamily=AF_BTH;socketAddress.btAddr=device.Address.ullLong;wchar_t contextAddress[64]{};DWORD contextLength=64;
-    if(WSAAddressToStringW(reinterpret_cast<LPSOCKADDR>(&socketAddress),sizeof(socketAddress),nullptr,contextAddress,&contextLength)!=0){out<<L"  SDP address formatting failed: "<<WSAGetLastError()<<L"\n";return false;}
+    if(WSAAddressToStringW(reinterpret_cast<LPSOCKADDR>(&socketAddress),sizeof(socketAddress),nullptr,contextAddress,&contextLength)!=0){out<<L"  SDP address formatting failed: "<<WSAGetLastError()<<L"\n";return summary;}
     GUID hidService{0x00001124,0x0000,0x1000,{0x80,0x00,0x00,0x80,0x5F,0x9B,0x34,0xFB}};WSAQUERYSETW query{};query.dwSize=sizeof(query);query.dwNameSpace=NS_BTH;query.lpServiceClassId=&hidService;query.lpszContext=contextAddress;
-    LookupHandle lookup;if(WSALookupServiceBeginW(&query,LUP_FLUSHCACHE,&lookup.value)!=0){out<<L"  Live HID SDP query failed: WSA "<<WSAGetLastError()<<L"\n";return false;}
-    bool returned{};std::vector<std::uint8_t> buffer(64*1024);
+    LookupHandle lookup;if(WSALookupServiceBeginW(&query,LUP_FLUSHCACHE,&lookup.value)!=0){out<<L"  Live HID SDP query failed: WSA "<<WSAGetLastError()<<L"\n";return summary;}
+    std::vector<std::uint8_t> buffer(64*1024);
     while(true){std::ranges::fill(buffer,std::uint8_t{});auto* result=reinterpret_cast<WSAQUERYSETW*>(buffer.data());result->dwSize=sizeof(*result);DWORD bytes=static_cast<DWORD>(buffer.size());
         const DWORD flags=LUP_RETURN_NAME|LUP_RETURN_COMMENT|LUP_RETURN_ADDR|LUP_RETURN_BLOB;if(WSALookupServiceNextW(lookup.value,flags,&bytes,result)!=0){const auto error=WSAGetLastError();if(error==WSAEFAULT&&bytes>buffer.size()){buffer.resize(bytes);continue;}if(error!=WSA_E_NO_MORE&&error!=WSASERVICE_NOT_FOUND)out<<L"  SDP result error: WSA "<<error<<L"\n";break;}
-        returned=true;out<<L"  HID SDP service: "<<(result->lpszServiceInstanceName?result->lpszServiceInstanceName:L"(unnamed)")<<L"\n";
+        summary.recordReturned=true;out<<L"  HID SDP service: "<<(result->lpszServiceInstanceName?result->lpszServiceInstanceName:L"(unnamed)")<<L"\n";
         if(!result->lpBlob||!result->lpBlob->pBlobData){out<<L"    no raw SDP record returned\n";continue;}const auto* record=result->lpBlob->pBlobData;const auto recordSize=result->lpBlob->cbSize;out<<L"    raw record: "<<bytesText(record,recordSize,4096)<<L"\n";SdpAttributeContext attribute{&out};
         if(!BluetoothSdpEnumAttributes(const_cast<LPBYTE>(record),recordSize,sdpAttribute,&attribute))out<<L"    SDP attribute parser failed: "<<GetLastError()<<L"\n";
         out<<std::format(L"    HID descriptor present={} Android Head Tracker descriptor={}\n",attribute.foundDescriptor,attribute.androidDescriptor);
+        summary.androidDescriptor|=attribute.androidDescriptor;
     }
-    if(!returned)out<<L"  No live HID SDP record was returned.\n";return returned;
+    if(!summary.recordReturned)out<<L"  No live HID SDP record was returned.\n";return summary;
+}
+
+// Quiet variant used for auto-detection: true when the device's live SDP record
+// carries a verified Android Head Tracker HID descriptor. Read-only.
+bool deviceAdvertisesAndroidHeadTracker(const BLUETOOTH_DEVICE_INFO& device){
+    std::wostringstream sink;return queryClassicSdp(device,sink).androidDescriptor;
 }
 
 std::wstring setupString(HDEVINFO set,SP_DEVINFO_DATA& dev,DWORD property){DWORD type{},needed{};SetupDiGetDeviceRegistryPropertyW(set,&dev,property,&type,nullptr,0,&needed);if(!needed)return {};std::vector<std::uint8_t> data(needed);if(!SetupDiGetDeviceRegistryPropertyW(set,&dev,property,&type,data.data(),needed,nullptr))return {};return reinterpret_cast<wchar_t*>(data.data());}
@@ -1034,7 +1086,7 @@ std::vector<std::uint8_t> readDescriptor(HANDLE device,BTH_LE_GATT_DESCRIPTOR& d
 void probeGatt(const BluetoothProbeOptions& options,std::wostream& out){
     const auto set=SetupDiGetClassDevsW(&GUID_BLUETOOTHLE_DEVICE_INTERFACE,nullptr,nullptr,DIGCF_DEVICEINTERFACE|DIGCF_PRESENT);if(set==INVALID_HANDLE_VALUE){out<<L"BLE interface enumeration failed: "<<GetLastError()<<L"\n";return;}SP_DEVICE_INTERFACE_DATA iface{};iface.cbSize=sizeof(iface);unsigned found{};
     for(DWORD index=0;SetupDiEnumDeviceInterfaces(set,nullptr,&GUID_BLUETOOTHLE_DEVICE_INTERFACE,index,&iface);++index){DWORD needed{};SetupDiGetDeviceInterfaceDetailW(set,&iface,nullptr,0,&needed,nullptr);std::vector<std::uint8_t> detailStorage(needed);auto* detail=reinterpret_cast<SP_DEVICE_INTERFACE_DETAIL_DATA_W*>(detailStorage.data());detail->cbSize=sizeof(*detail);SP_DEVINFO_DATA dev{};dev.cbSize=sizeof(dev);if(!SetupDiGetDeviceInterfaceDetailW(set,&iface,detail,needed,nullptr,&dev))continue;
-        wchar_t instance[MAX_DEVICE_ID_LEN]{};SetupDiGetDeviceInstanceIdW(set,&dev,instance,MAX_DEVICE_ID_LEN,nullptr);auto name=setupString(set,dev,SPDRP_FRIENDLYNAME);if(name.empty())name=setupString(set,dev,SPDRP_DEVICEDESC);const bool selected=options.probeAllLeDevices||containsInsensitive(name,options.nameFilter)||containsInsensitive(instance,options.nameFilter);out<<std::format(L"BLE device {}: {}\n  instance: {}\n  selected for reads: {}\n",index,name,instance,selected);++found;if(!selected)continue;
+        wchar_t instance[MAX_DEVICE_ID_LEN]{};SetupDiGetDeviceInstanceIdW(set,&dev,instance,MAX_DEVICE_ID_LEN,nullptr);auto name=setupString(set,dev,SPDRP_FRIENDLYNAME);if(name.empty())name=setupString(set,dev,SPDRP_DEVICEDESC);const bool selected=options.probeAllLeDevices||(!options.nameFilter.empty()&&(containsInsensitive(name,options.nameFilter)||containsInsensitive(instance,options.nameFilter)));out<<std::format(L"BLE device {}: {}\n  instance: {}\n  selected for reads: {}\n",index,name,instance,selected);++found;if(!selected)continue;
         WinHandle handle;handle.value=CreateFileW(detail->DevicePath,GENERIC_READ|GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);if(handle.value==INVALID_HANDLE_VALUE)handle.value=CreateFileW(detail->DevicePath,GENERIC_READ,FILE_SHARE_READ|FILE_SHARE_WRITE,nullptr,OPEN_EXISTING,0,nullptr);if(handle.value==INVALID_HANDLE_VALUE){out<<L"  open failed: "<<GetLastError()<<L"\n";continue;}
         auto serviceValues=services(handle.value);out<<L"  primary services: "<<serviceValues.size()<<L"\n";for(auto& service:serviceValues){out<<std::format(L"    service {} handle=0x{:04X}\n",uuidText(service.ServiceUuid),service.AttributeHandle);auto chars=characteristics(handle.value,service);for(auto& characteristic:chars){out<<std::format(L"      characteristic {} attr=0x{:04X} value=0x{:04X} properties={}{}{}{}{}\n",uuidText(characteristic.CharacteristicUuid),characteristic.AttributeHandle,characteristic.CharacteristicValueHandle,characteristic.IsReadable?L"R":L"",characteristic.IsWritable?L"W":L"",characteristic.IsWritableWithoutResponse?L"w":L"",characteristic.IsNotifiable?L"N":L"",characteristic.IsIndicatable?L"I":L"");
                 if(characteristic.IsReadable){HRESULT hr{};const auto value=readCharacteristic(handle.value,characteristic,hr);out<<L"        read "<<(SUCCEEDED(hr)?L"ok":std::format(L"failed 0x{:08X}",static_cast<unsigned>(hr)))<<L": "<<bytesText(value.data(),value.size(),1024)<<L"\n";}
@@ -1046,28 +1098,69 @@ void probeGatt(const BluetoothProbeOptions& options,std::wostream& out){
 
 } // namespace
 
+// Resolves the paired Bluetooth headset name owning a head-tracker HID node by
+// walking the PnP parent chain to the BTHENUM node and matching its address
+// against the paired-device list.
+std::wstring bluetoothNameForHidInstance(std::wstring_view instanceId){
+    if(instanceId.empty())return {};
+    std::wstring id(instanceId);DEVINST node{};
+    if(CM_Locate_DevNodeW(&node,id.data(),CM_LOCATE_DEVNODE_NORMAL)!=CR_SUCCESS)return {};
+    BLUETOOTH_ADDRESS address{};bool resolved{};
+    for(int depth=0;depth<6&&!resolved;++depth){
+        DEVINST parent{};if(CM_Get_Parent(&parent,node,0)!=CR_SUCCESS)break;node=parent;
+        wchar_t parentId[MAX_DEVICE_ID_LEN]{};if(CM_Get_Device_IDW(node,parentId,MAX_DEVICE_ID_LEN,0)!=CR_SUCCESS)continue;
+        const std::wstring_view text(parentId);
+        if(!text.starts_with(L"BTHENUM\\"))continue;
+        resolved=addressFromBthenumId(text,address);
+    }
+    if(!resolved)return {};
+    for(const auto& device:pairedClassicDevices())if(device.Address.ullLong==address.ullLong)return device.szName;
+    return {};
+}
+
+std::vector<std::wstring> pairedBluetoothDeviceNames(){
+    std::vector<std::wstring> names;
+    for(const auto& device:pairedClassicDevices())names.emplace_back(device.szName);
+    return names;
+}
+
 int runBluetoothProbe(const BluetoothProbeOptions& options,std::wostream& output){
     WSADATA winsock{};if(WSAStartup(MAKEWORD(2,2),&winsock)!=0){output<<L"Winsock initialization failed.\n";return 3;}
     output<<L"Read-only Bluetooth investigation\n=================================\n";BLUETOOTH_DEVICE_SEARCH_PARAMS search{};search.dwSize=sizeof(search);search.fReturnAuthenticated=TRUE;search.fReturnRemembered=TRUE;search.fReturnConnected=TRUE;search.fReturnUnknown=FALSE;search.fIssueInquiry=FALSE;search.cTimeoutMultiplier=2;BLUETOOTH_DEVICE_INFO device{};device.dwSize=sizeof(device);FindDeviceHandle find;find.value=BluetoothFindFirstDevice(&search,&device);unsigned matched{};
-    if(find.value){do{if(!containsInsensitive(device.szName,options.nameFilter))continue;++matched;output<<std::format(L"\nClassic device: {} [{}] connected={} authenticated={} remembered={}\n",device.szName,addressText(device.Address),device.fConnected!=FALSE,device.fAuthenticated!=FALSE,device.fRemembered!=FALSE);queryClassicSdp(device,output);device={};device.dwSize=sizeof(device);}while(BluetoothFindNextDevice(find.value,&device));}
-    if(!matched)output<<L"No paired Classic Bluetooth device matched '"<<options.nameFilter<<L"'.\n";
+    if(find.value){do{if(!containsInsensitive(device.szName,options.nameFilter))continue;++matched;output<<std::format(L"\nClassic device: {} [{}] connected={} authenticated={} remembered={}\n",device.szName,addressText(device.Address),device.fConnected!=FALSE,device.fAuthenticated!=FALSE,device.fRemembered!=FALSE);
+        const auto sdp=queryClassicSdp(device,output);
+        if(sdp.androidDescriptor)output<<L"  => "<<device.szName<<L" advertises the Android Head Tracker service. This headset should work.\n";
+        else if(containsInsensitive(device.szName,L"AirPods"))output<<L"  => AirPods use Apple's proprietary accessory protocol (L2CAP PSM 0x1001), which\n     Windows does not expose to applications. Head tracking cannot be read from\n     AirPods on Windows without a third-party kernel driver. See README > Compatibility.\n";
+        device={};device.dwSize=sizeof(device);}while(BluetoothFindNextDevice(find.value,&device));}
+    if(!matched)output<<(options.nameFilter.empty()?std::wstring(L"No paired Classic Bluetooth devices were found.\n"):std::format(L"No paired Classic Bluetooth device matched '{}'.\n",options.nameFilter));
     output<<L"\nBLE GATT interfaces\n===================\n";probeGatt(options,output);output<<L"\nNo configuration values were written and no notification subscriptions were enabled.\n";WSACleanup();return matched?0:2;
 }
 
 int rebindBluetoothHid(std::wstring_view nameFilter,std::wostream& output){
     BLUETOOTH_FIND_RADIO_PARAMS radioSearch{sizeof(radioSearch)};WinHandle radio;FindRadioHandle findRadio;findRadio.value=BluetoothFindFirstRadio(&radioSearch,&radio.value);
     if(!findRadio.value){output<<L"No Bluetooth radio is available (Win32 "<<GetLastError()<<L").\n";return 3;}
+    // With no name filter, auto-detect via read-only SDP which paired device(s)
+    // actually advertise the Android Head Tracker descriptor, so the service
+    // cycle below never touches an unrelated HID device (mouse, keyboard, ...).
+    const bool autoDetect=nameFilter.empty();std::set<unsigned long long> targets;
+    if(autoDetect){
+        WSADATA winsock{};if(WSAStartup(MAKEWORD(2,2),&winsock)!=0){output<<L"Winsock initialization failed; pass --name to select the headset explicitly.\n";return 3;}
+        output<<L"Auto-detecting paired devices that advertise the Android Head Tracker service...\n";
+        for(const auto& candidate:pairedClassicDevices())if(deviceAdvertisesAndroidHeadTracker(candidate)){targets.insert(candidate.Address.ullLong);output<<L"  found: "<<candidate.szName<<L" ["<<addressText(candidate.Address)<<L"]\n";}
+        WSACleanup();
+        if(targets.empty()){output<<L"No paired device advertises the Android Head Tracker service over SDP.\n  - Make sure the headphones are connected and powered on, then retry.\n  - Or pass --name \"<Bluetooth device name>\" to select the headset explicitly.\n  - AirPods and other Apple headphones do not implement this protocol and cannot work.\n";return 2;}
+    }
     // Never toggle a live HID service. If Bluetooth's database says the service
     // is enabled but no PnP node exists, disable/enable repairs that stale state.
     GUID hidService{0x00001124,0x0000,0x1000,{0x80,0x00,0x00,0x80,0x5F,0x9B,0x34,0xFB}};bool matched{};DWORD enableResult=ERROR_NOT_FOUND;
     do{
         BLUETOOTH_DEVICE_SEARCH_PARAMS search{};search.dwSize=sizeof(search);search.fReturnAuthenticated=TRUE;search.fReturnRemembered=TRUE;search.fReturnConnected=TRUE;search.fReturnUnknown=FALSE;search.fIssueInquiry=FALSE;search.hRadio=radio.value;BLUETOOTH_DEVICE_INFO device{};device.dwSize=sizeof(device);FindDeviceHandle find;find.value=BluetoothFindFirstDevice(&search,&device);
-        if(find.value){do{if(!containsInsensitive(device.szName,nameFilter)){device={};device.dwSize=sizeof(device);continue;}matched=true;const bool liveNode=hasPresentBluetoothHidChild(device.Address);output<<L"Requesting HID service for "<<device.szName<<L" ["<<addressText(device.Address)<<L"]\n  live HID child: "<<(liveNode?L"yes":L"no")<<L"\n";enableResult=BluetoothSetServiceState(radio.value,&device,&hidService,BLUETOOTH_SERVICE_ENABLE);output<<L"  enable result: "<<enableResult<<L"\n";
+        if(find.value){do{const bool wanted=autoDetect?targets.contains(device.Address.ullLong):containsInsensitive(device.szName,nameFilter);if(!wanted){device={};device.dwSize=sizeof(device);continue;}matched=true;const bool liveNode=hasPresentBluetoothHidChild(device.Address);output<<L"Requesting HID service for "<<device.szName<<L" ["<<addressText(device.Address)<<L"]\n  live HID child: "<<(liveNode?L"yes":L"no")<<L"\n";enableResult=BluetoothSetServiceState(radio.value,&device,&hidService,BLUETOOTH_SERVICE_ENABLE);output<<L"  enable result: "<<enableResult<<L"\n";
             if(!liveNode&&(enableResult==ERROR_INVALID_PARAMETER||enableResult==static_cast<DWORD>(E_INVALIDARG))){output<<L"  stale enabled state detected; cycling only the absent HID service\n";const auto disableResult=BluetoothSetServiceState(radio.value,&device,&hidService,BLUETOOTH_SERVICE_DISABLE);output<<L"  disable result: "<<disableResult<<L"\n";if(disableResult==ERROR_SUCCESS||disableResult==ERROR_INVALID_PARAMETER||disableResult==static_cast<DWORD>(E_INVALIDARG)){Sleep(1500);enableResult=BluetoothSetServiceState(radio.value,&device,&hidService,BLUETOOTH_SERVICE_ENABLE);output<<L"  recovery enable result: "<<enableResult<<L"\n";}}
             device={};device.dwSize=sizeof(device);}while(BluetoothFindNextDevice(find.value,&device));}
         if(matched)break;CloseHandle(radio.value);radio.value=INVALID_HANDLE_VALUE;
     }while(BluetoothFindNextRadio(findRadio.value,&radio.value));
-    if(!matched){output<<L"No paired Bluetooth device matched '"<<nameFilter<<L"'.\n";return 2;}
+    if(!matched){output<<(autoDetect?std::wstring(L"The auto-detected headset was not found during the rebind pass.\n"):std::format(L"No paired Bluetooth device matched '{}'.\n",nameFilter));return 2;}
     if(enableResult==ERROR_SUCCESS){output<<L"HID service was requested; waiting for Plug and Play enumeration.\n";Sleep(5000);return 0;}
     if(enableResult==ERROR_INVALID_PARAMETER||enableResult==static_cast<DWORD>(E_INVALIDARG)){output<<L"HID service is already enabled. No device was removed; power-cycle the headphones.\n";return 0;}
     output<<L"HID service enable failed. No existing device was removed.\n";return 4;
@@ -1159,12 +1252,14 @@ public:
     UdpOutput(const UdpOutput&) = delete;
     UdpOutput& operator=(const UdpOutput&) = delete;
     bool open(std::string host, std::uint16_t port);
+    void setDeviceLabel(std::wstring_view name);   // headset name for the JSON "device" field
     void send(const TrackingSample& sample);
     void close();
 
 private:
     SOCKET socket_{INVALID_SOCKET};
     sockaddr_in destination_{};
+    std::string deviceJson_{"null"};
 };
 
 UdpOutput::UdpOutput() { WSADATA data{}; WSAStartup(MAKEWORD(2,2), &data); }
@@ -1178,6 +1273,19 @@ bool UdpOutput::open(std::string host, std::uint16_t port) {
     destination_.sin_port = htons(port);
     if (inet_pton(AF_INET, host.c_str(), &destination_.sin_addr) != 1) { close(); return false; }
     return true;
+}
+
+void UdpOutput::setDeviceLabel(std::wstring_view name) {
+    if (name.empty()) { deviceJson_ = "null"; return; }
+    const auto bytes = WideCharToMultiByte(CP_UTF8, 0, name.data(), static_cast<int>(name.size()), nullptr, 0, nullptr, nullptr);
+    std::string utf8(bytes > 0 ? static_cast<std::size_t>(bytes) : 0, '\0');
+    if (bytes > 0) WideCharToMultiByte(CP_UTF8, 0, name.data(), static_cast<int>(name.size()), utf8.data(), bytes, nullptr, nullptr);
+    std::string escaped; escaped.reserve(utf8.size() + 2); escaped.push_back('"');
+    for (const char c : utf8) {
+        if (c == '"' || c == '\\') escaped.push_back('\\');
+        if (static_cast<unsigned char>(c) >= 0x20) escaped.push_back(c);   // control characters are dropped
+    }
+    escaped.push_back('"'); deviceJson_ = std::move(escaped);
 }
 
 void UdpOutput::send(const TrackingSample& s) {
@@ -1196,8 +1304,8 @@ void UdpOutput::send(const TrackingSample& s) {
     const auto accel = s.hasAcceleration
         ? std::format("[{:.9g},{:.9g},{:.9g}]", s.acceleration.x, s.acceleration.y, s.acceleration.z)
         : std::string("null");
-    auto json = std::format("{{\"version\":2,\"rotationVector\":[{:.9g},{:.9g},{:.9g}],\"quaternion\":[{:.9g},{:.9g},{:.9g},{:.9g}],\"yprDegrees\":[{:.9g},{:.9g},{:.9g}],\"gyroscope\":{},\"accelerometer\":{},\"angularVelocity\":{},\"resetCounter\":{},\"packetsPerSecond\":{:.3f},\"receiveLatencyMs\":{:.3f}}}",
-        s.rotationVector.x,s.rotationVector.y,s.rotationVector.z,s.orientation.w,s.orientation.x,s.orientation.y,s.orientation.z,
+    auto json = std::format("{{\"version\":2,\"device\":{},\"rotationVector\":[{:.9g},{:.9g},{:.9g}],\"quaternion\":[{:.9g},{:.9g},{:.9g},{:.9g}],\"yprDegrees\":[{:.9g},{:.9g},{:.9g}],\"gyroscope\":{},\"accelerometer\":{},\"angularVelocity\":{},\"resetCounter\":{},\"packetsPerSecond\":{:.3f},\"receiveLatencyMs\":{:.3f}}}",
+        deviceJson_,s.rotationVector.x,s.rotationVector.y,s.rotationVector.z,s.orientation.w,s.orientation.x,s.orientation.y,s.orientation.z,
         s.euler.yaw,s.euler.pitch,s.euler.roll,gyro,accel,gyro,s.resetCounter,s.packetsPerSecond,s.receiveLatencyMs);
     auto jsonDest = destination_; jsonDest.sin_port = htons(static_cast<u_short>(ntohs(destination_.sin_port) + 1));
     sendto(socket_, json.data(), static_cast<int>(json.size()), 0, reinterpret_cast<const sockaddr*>(&jsonDest), sizeof(jsonDest));
@@ -1226,6 +1334,7 @@ public:
     std::vector<DeviceInfo> devices; std::vector<SensorInfo> sensorDevices;
     std::array<std::vector<float>,3> history; bool connected{}; FilterConfig filterConfig{};
     std::uint16_t udpPort{4242};
+    std::wstring headsetName;   // resolved Bluetooth name of the connected head tracker
 
     // Cohesive dark palette shared by the back-buffer paint and the child controls.
     static constexpr COLORREF kWindowBg{RGB(24,28,35)};
@@ -1240,7 +1349,7 @@ public:
     RECT graphRect() const { RECT r{}; GetClientRect(hwnd,&r); return RECT{12,r.bottom-125,r.right-12,r.bottom-12}; }
     void enumerate(){
         hid.disconnect();sensors.disconnect();connected=false;devices=hid.enumerate();sensorDevices=sensors.enumerate();SendMessageW(list,LB_RESETCONTENT,0,0);
-        for(const auto& d:devices){auto label=std::format(L"HID {:04X}:{:04X}  {}",d.vendorId,d.productId,d.product.empty()?d.instanceId:d.product);SendMessageW(list,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(label.c_str()));}
+        for(const auto& d:devices){const auto& shown=!d.bluetoothName.empty()?d.bluetoothName:(!d.product.empty()?d.product:d.instanceId);auto label=std::format(L"HID {:04X}:{:04X}  {}",d.vendorId,d.productId,shown);SendMessageW(list,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(label.c_str()));}
         for(const auto& s:sensorDevices){auto label=std::format(L"Sensor API  {}",s.friendlyName);SendMessageW(list,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(label.c_str()));}
         if(!devices.empty()||!sensorDevices.empty())SendMessageW(list,LB_SETCURSEL,0,0);
         connectFirst();if(!devices.empty()||!sensorDevices.empty())showDetails(0);
@@ -1248,7 +1357,7 @@ public:
     void showDetails(int selection){
         std::wostringstream o;
         if(selection>=0&&static_cast<std::size_t>(selection)<devices.size()){
-            const auto& d=devices[selection];o<<L"Path: "<<d.path<<L"\r\nInstance: "<<d.instanceId<<L"\r\nManufacturer: "<<d.manufacturer<<L"\r\nProduct: "<<d.product;
+            const auto& d=devices[selection];o<<L"Path: "<<d.path<<L"\r\nInstance: "<<d.instanceId<<L"\r\nManufacturer: "<<d.manufacturer<<L"\r\nProduct: "<<d.product<<L"\r\nBluetooth headset: "<<(d.bluetoothName.empty()?L"(unresolved)":d.bluetoothName.c_str());
             o<<std::format(L"\r\nUsage: 0x{:04X}:0x{:04X}   VID/PID: {:04X}:{:04X}\r\nInput bytes: {}   Feature bytes: {}\r\nAndroid description: {}\r\nVerified: {}\r\n\r\nDescriptor fields:\r\n",d.usagePage,d.usage,d.vendorId,d.productId,d.inputReportBytes,d.featureReportBytes,std::wstring(d.sensorDescription.begin(),d.sensorDescription.end()),d.androidHeadTracker?L"yes":L"no");
             for(const auto& f:d.fields)o<<std::format(L"{} id={} usage={:04X}:{:04X} count={} bits={} logical={}..{} physical={}..{} exp={} unit=0x{:X} data={}\r\n",f.feature?L"FEATURE":L"INPUT",f.reportId,f.usagePage,f.usage,f.reportCount,f.bitSize,f.logicalMin,f.logicalMax,f.physicalMin,f.physicalMax,f.unitExponent,f.unit,f.dataIndex);
             for(const auto& v:d.featureValues)o<<L"Feature: "<<std::wstring(v.begin(),v.end())<<L"\r\n";
@@ -1258,10 +1367,19 @@ public:
     }
     void connectFirst(){
         const auto it=std::find_if(devices.begin(),devices.end(),[](const auto& d){return d.androidHeadTracker;});
-        if(it!=devices.end()){connected=hid.connect(*it,[w=hwnd](const auto& bytes){PostMessageW(w,kRawMessage,0,reinterpret_cast<LPARAM>(new std::vector<std::uint8_t>(bytes)));},[w=hwnd](TrackingSample s){PostMessageW(w,kSampleMessage,0,reinterpret_cast<LPARAM>(new TrackingSample(std::move(s))));});return;}
+        if(it!=devices.end()){
+            headsetName=!it->bluetoothName.empty()?it->bluetoothName:(!it->product.empty()?it->product:L"head tracker");
+            udp.setDeviceLabel(headsetName);
+            connected=hid.connect(*it,[w=hwnd](const auto& bytes){PostMessageW(w,kRawMessage,0,reinterpret_cast<LPARAM>(new std::vector<std::uint8_t>(bytes)));},[w=hwnd](TrackingSample s){PostMessageW(w,kSampleMessage,0,reinterpret_cast<LPARAM>(new TrackingSample(std::move(s))));});
+            if(connected){SetWindowTextW(hwnd,std::format(L"Head Tracker Bridge {} — {}",kVersion,headsetName).c_str());SetWindowTextW(stats,std::format(L"Connected to {}. Waiting for the first sample…",headsetName).c_str());}
+            return;}
         const auto fallback=std::find_if(sensorDevices.begin(),sensorDevices.end(),[](const auto& s){return s.androidHeadTracker;});
-        if(fallback!=sensorDevices.end()){SetWindowTextW(raw,L"Raw packet: unavailable through Windows Sensor API");connected=sensors.connect(*fallback,[w=hwnd](TrackingSample s){PostMessageW(w,kSampleMessage,0,reinterpret_cast<LPARAM>(new TrackingSample(std::move(s))));});return;}
-        SetWindowTextW(stats,L"Waiting for the XM5 motion-sensor HID profile. Power-cycle the headphones if they are already paired.");
+        if(fallback!=sensorDevices.end()){headsetName=fallback->friendlyName;udp.setDeviceLabel(headsetName);SetWindowTextW(raw,L"Raw packet: unavailable through Windows Sensor API");connected=sensors.connect(*fallback,[w=hwnd](TrackingSample s){PostMessageW(w,kSampleMessage,0,reinterpret_cast<LPARAM>(new TrackingSample(std::move(s))));});return;}
+        headsetName.clear();udp.setDeviceLabel({});
+        SetWindowTextW(hwnd,std::format(L"Head Tracker Bridge {}",kVersion).c_str());
+        std::wstring waiting=L"Waiting for an Android Head Tracker HID profile. Power-cycle the headphones if they are already paired.";
+        for(const auto& name:pairedBluetoothDeviceNames())if(containsInsensitive(name,L"AirPods")){waiting+=L"  Note: AirPods were detected — Apple does not expose head tracking to Windows (proprietary protocol); see README › Compatibility.";break;}
+        SetWindowTextW(stats,waiting.c_str());
     }
     void onSample(std::unique_ptr<TrackingSample> s){
         auto filtered=filter.process(std::move(*s));udp.send(filtered);for(int i=0;i<3;++i){history[i].push_back(static_cast<float>(i==0?filtered.euler.yaw:i==1?filtered.euler.pitch:filtered.euler.roll));if(history[i].size()>360)history[i].erase(history[i].begin());}
@@ -1334,7 +1452,7 @@ LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp){auto* self=reinter
     case WM_CTLCOLORSTATIC:{auto dc=reinterpret_cast<HDC>(wp);const bool muted=reinterpret_cast<HWND>(lp)==self->ports;SetBkColor(dc,Window::kWindowBg);SetTextColor(dc,muted?Window::kMuted:Window::kText);return reinterpret_cast<LRESULT>(self->background);}
     case WM_CTLCOLORBTN:{auto dc=reinterpret_cast<HDC>(wp);SetBkColor(dc,Window::kWindowBg);SetTextColor(dc,Window::kText);return reinterpret_cast<LRESULT>(self->background);}
     case WM_CTLCOLOREDIT:case WM_CTLCOLORLISTBOX:{auto dc=reinterpret_cast<HDC>(wp);SetBkColor(dc,Window::kPanelBg);SetTextColor(dc,Window::kText);return reinterpret_cast<LRESULT>(self->panel);}
-    case WM_COMMAND:if(LOWORD(wp)==kRefresh){self->enumerate();return 0;}if(LOWORD(wp)==kRepair){wchar_t executable[MAX_PATH]{};GetModuleFileNameW(nullptr,executable,MAX_PATH);const auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd,L"open",executable,L"repair",nullptr,SW_SHOWNORMAL));if(result>32){SetWindowTextW(self->stats,L"Repair started. Approve the Windows prompt; this window will reopen automatically.");PostMessageW(hwnd,WM_CLOSE,0,0);}else MessageBoxW(hwnd,L"Could not start the repair command.",L"XM5 Head Tracker Bridge",MB_OK|MB_ICONERROR);return 0;}if(LOWORD(wp)==kRecenter){self->filter.recenter();return 0;}if(LOWORD(wp)==kDeviceList&&HIWORD(wp)==LBN_SELCHANGE){self->showDetails(static_cast<int>(SendMessageW(self->list,LB_GETCURSEL,0,0)));return 0;}if(reinterpret_cast<HWND>(lp)==self->mapping||reinterpret_cast<HWND>(lp)==self->invertX||reinterpret_cast<HWND>(lp)==self->invertY||reinterpret_cast<HWND>(lp)==self->invertZ){self->applyControls();return 0;}break;
+    case WM_COMMAND:if(LOWORD(wp)==kRefresh){self->enumerate();return 0;}if(LOWORD(wp)==kRepair){wchar_t executable[MAX_PATH]{};GetModuleFileNameW(nullptr,executable,MAX_PATH);const auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd,L"open",executable,L"repair",nullptr,SW_SHOWNORMAL));if(result>32){SetWindowTextW(self->stats,L"Repair started. Approve the Windows prompt; this window will reopen automatically.");PostMessageW(hwnd,WM_CLOSE,0,0);}else MessageBoxW(hwnd,L"Could not start the repair command.",L"Head Tracker Bridge",MB_OK|MB_ICONERROR);return 0;}if(LOWORD(wp)==kRecenter){self->filter.recenter();return 0;}if(LOWORD(wp)==kDeviceList&&HIWORD(wp)==LBN_SELCHANGE){self->showDetails(static_cast<int>(SendMessageW(self->list,LB_GETCURSEL,0,0)));return 0;}if(reinterpret_cast<HWND>(lp)==self->mapping||reinterpret_cast<HWND>(lp)==self->invertX||reinterpret_cast<HWND>(lp)==self->invertY||reinterpret_cast<HWND>(lp)==self->invertZ){self->applyControls();return 0;}break;
     case WM_HSCROLL:if(reinterpret_cast<HWND>(lp)==self->smoothing){self->applyControls();return 0;}break;
     case WM_HOTKEY:self->filter.recenter();return 0;
     case WM_TIMER:if(!self->hid.connected()&&!self->sensors.connected()&&!self->connected){self->enumerate();}else if(!self->hid.connected()&&!self->sensors.connected()){self->connected=false;self->enumerate();}return 0;
@@ -1349,7 +1467,7 @@ int runGui(HINSTANCE instance,int showCommand){
 #ifdef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 #endif
-    INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_STANDARD_CLASSES};InitCommonControlsEx(&controls);Window state;state.instance=instance;WNDCLASSEXW wc{sizeof(wc)};wc.style=CS_HREDRAW|CS_VREDRAW;wc.lpfnWndProc=proc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.lpszClassName=L"XM5HeadTrackerBridgeWindow";RegisterClassExW(&wc);const auto title=std::format(L"XM5 Head Tracker Bridge {}",kVersion);auto hwnd=CreateWindowExW(0,wc.lpszClassName,title.c_str(),WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,1100,760,nullptr,nullptr,instance,&state);if(!hwnd)return 1;ShowWindow(hwnd,showCommand);UpdateWindow(hwnd);MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return static_cast<int>(msg.wParam);}
+    INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_STANDARD_CLASSES};InitCommonControlsEx(&controls);Window state;state.instance=instance;WNDCLASSEXW wc{sizeof(wc)};wc.style=CS_HREDRAW|CS_VREDRAW;wc.lpfnWndProc=proc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.lpszClassName=L"XM5HeadTrackerBridgeWindow";RegisterClassExW(&wc);const auto title=std::format(L"Head Tracker Bridge {}",kVersion);auto hwnd=CreateWindowExW(0,wc.lpszClassName,title.c_str(),WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,1100,760,nullptr,nullptr,instance,&state);if(!hwnd)return 1;ShowWindow(hwnd,showCommand);UpdateWindow(hwnd);MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return static_cast<int>(msg.wParam);}
 } // namespace xm5
 
 // =============================================================================
@@ -1367,8 +1485,12 @@ void console(){
     SetConsoleCtrlHandler(consoleHandler,TRUE);
 }
 void printUsage(std::wostream& out){
-    out<<L"XM5 Head Tracker Bridge "<<xm5::kVersion<<L"\n"
-       <<L"Streams the Sony WH-1000XM5's head-tracking sensor over UDP (OpenTrack + JSON).\n\n"
+    out<<L"Head Tracker Bridge "<<xm5::kVersion<<L"\n"
+       <<L"Streams head tracking from any headset implementing the Android Head Tracker\n"
+       <<L"HID protocol (Sony WH-1000XM5 and others) over UDP (OpenTrack + JSON). The\n"
+       <<L"connected headset is auto-detected and named in the output.\n"
+       <<L"AirPods are recognised but cannot work: Apple uses a proprietary protocol\n"
+       <<L"that Windows does not expose to applications (see README > Compatibility).\n\n"
        <<L"Usage:\n"
        <<L"  xm5-headtracker.exe                       diagnostics GUI (default)\n"
        <<L"  xm5-headtracker.exe bridge [--port 4242] [--seconds N]\n"
@@ -1376,14 +1498,26 @@ void printUsage(std::wostream& out){
        <<L"  xm5-headtracker.exe probe [--include-disabled]\n"
        <<L"  xm5-headtracker.exe dump [--seconds N]\n"
        <<L"  xm5-headtracker.exe repair\n"
-       <<L"  xm5-headtracker.exe bluetooth-probe [--all-le] [--name \"WH-1000XM5\"]\n"
-       <<L"  xm5-headtracker.exe bluetooth-rebind [--name \"WH-1000XM5\"]\n"
+       <<L"  xm5-headtracker.exe bluetooth-probe [--all-le] [--name FILTER]\n"
+       <<L"  xm5-headtracker.exe bluetooth-rebind [--name FILTER]\n"
+       <<L"                             (--name defaults to auto-detecting the headset)\n"
        <<L"  xm5-headtracker.exe bluetooth-generic-hid   (run from an elevated prompt)\n"
        <<L"  xm5-headtracker.exe help | version\n\n"
        <<L"bridge sends six little-endian doubles (x, y, z, yaw, pitch, roll) to UDP\n"
        <<L"127.0.0.1:<port> and a JSON datagram to <port>+1. Loopback only; unauthenticated.\n";
 }
-void printDevice(const xm5::DeviceInfo& d){std::wcout<<std::format(L"HID {}\n  {} {}\n  usage 0x{:04X}:0x{:04X}, VID/PID {:04X}:{:04X}, reports input={} feature={}\n  description: {}\n  verified Android tracker: {}\n",d.instanceId,d.manufacturer,d.product,d.usagePage,d.usage,d.vendorId,d.productId,d.inputReportBytes,d.featureReportBytes,std::wstring(d.sensorDescription.begin(),d.sensorDescription.end()),d.androidHeadTracker?L"yes":L"no");for(const auto& f:d.fields)std::wcout<<std::format(L"    {} id={} {:04X}:{:04X} count={} bits={} logical={}..{} physical={}..{} exp={}\n",f.feature?L"feature":L"input",f.reportId,f.usagePage,f.usage,f.reportCount,f.bitSize,f.logicalMin,f.logicalMax,f.physicalMin,f.physicalMax,f.unitExponent);}
+void printDevice(const xm5::DeviceInfo& d){std::wcout<<std::format(L"HID {}\n  {} {}\n  usage 0x{:04X}:0x{:04X}, VID/PID {:04X}:{:04X}, reports input={} feature={}\n",d.instanceId,d.manufacturer,d.product,d.usagePage,d.usage,d.vendorId,d.productId,d.inputReportBytes,d.featureReportBytes);if(!d.bluetoothName.empty())std::wcout<<L"  Bluetooth headset: "<<d.bluetoothName<<L'\n';std::wcout<<std::format(L"  description: {}\n  verified Android tracker: {}\n",std::wstring(d.sensorDescription.begin(),d.sensorDescription.end()),d.androidHeadTracker?L"yes":L"no");for(const auto& f:d.fields)std::wcout<<std::format(L"    {} id={} {:04X}:{:04X} count={} bits={} logical={}..{} physical={}..{} exp={}\n",f.feature?L"feature":L"input",f.reportId,f.usagePage,f.usage,f.reportCount,f.bitSize,f.logicalMin,f.logicalMax,f.physicalMin,f.physicalMax,f.unitExponent);}
+
+// Names the first paired AirPods (any generation), or empty when none are paired.
+// AirPods never implement the Android Head Tracker protocol, so when they are the
+// only headphones present the diagnostics say why nothing was found.
+std::wstring pairedAirPodsName(){
+    for(const auto& name:xm5::pairedBluetoothDeviceNames()){
+        std::wstring low(name);std::ranges::transform(low,low.begin(),[](wchar_t c){return static_cast<wchar_t>(towlower(c));});
+        if(low.find(L"airpods")!=std::wstring::npos)return name;
+    }
+    return {};
+}
 
 bool elevated(){
     HANDLE token{};if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&token))return false;
@@ -1392,10 +1526,10 @@ bool elevated(){
 BOOL CALLBACK closeBridgeWindow(HWND hwnd,LPARAM){wchar_t name[64]{};GetClassNameW(hwnd,name,64);if(std::wstring_view(name)==L"XM5HeadTrackerBridgeWindow")PostMessageW(hwnd,WM_CLOSE,0,0);return TRUE;}
 bool trackerAccessible(){xm5::HidBackend hid;const auto devices=hid.enumerate();return std::ranges::any_of(devices,[](const auto& d){return d.androidHeadTracker;});}
 int elevatedRepair(){
-    std::wcout<<L"XM5 one-click repair\n====================\n";
+    std::wcout<<L"Head tracker one-click repair\n=============================\n";
     if(trackerAccessible()){std::wcout<<L"The Android Head Tracker is already accessible. No driver change was needed.\n";return 0;}
-    std::wcout<<L"Recreating the XM5 Bluetooth HID child...\n";
-    const auto rebind=xm5::rebindBluetoothHid(L"WH-1000XM5",std::wcout);if(rebind!=0)return rebind;
+    std::wcout<<L"Recreating the headset's Bluetooth HID child (auto-detecting the headset)...\n";
+    const auto rebind=xm5::rebindBluetoothHid(L"",std::wcout);if(rebind!=0)return rebind;
     int binding=2;for(int attempt=0;attempt<4&&binding==2;++attempt){if(attempt)std::this_thread::sleep_for(std::chrono::seconds(2));binding=xm5::useGenericHidDriver(std::wcout);}
     if(binding!=0&&binding!=1)return binding;
     for(int attempt=0;attempt<10;++attempt){std::this_thread::sleep_for(std::chrono::seconds(1));if(trackerAccessible()){std::wcout<<L"Repair complete: #AndroidHeadTracker# is accessible.\n";return 0;}}
@@ -1414,13 +1548,19 @@ int wmain(int argc,wchar_t** argv){const std::wstring command=argc>1?argv[1]:L"g
     if(command==L"version"||command==L"--version"||command==L"-v"){std::wcout<<L"xm5-headtracker "<<xm5::kVersion<<L'\n';return 0;}
     if(command==L"help"||command==L"--help"||command==L"-h"||command==L"/?"){printUsage(std::wcout);return 0;}
     xm5::Logger::instance().setSink([](xm5::LogLevel,const std::wstring& line){std::wcerr<<line<<L'\n';});
-    if(command==L"bluetooth-probe"){xm5::BluetoothProbeOptions options;std::wstring name=L"WH-1000XM5";for(int i=2;i<argc;++i){const std::wstring_view option=argv[i];if(option==L"--all-le")options.probeAllLeDevices=true;else if(option==L"--name"&&i+1<argc)name=argv[++i];}options.nameFilter=name;return xm5::runBluetoothProbe(options,std::wcout);}
-    if(command==L"bluetooth-rebind"){std::wstring name=L"WH-1000XM5";for(int i=2;i+1<argc;++i)if(std::wstring_view(argv[i])==L"--name")name=argv[++i];return xm5::rebindBluetoothHid(name,std::wcout);}
+    if(command==L"bluetooth-probe"){xm5::BluetoothProbeOptions options;std::wstring name;for(int i=2;i<argc;++i){const std::wstring_view option=argv[i];if(option==L"--all-le")options.probeAllLeDevices=true;else if(option==L"--name"&&i+1<argc)name=argv[++i];}options.nameFilter=name;return xm5::runBluetoothProbe(options,std::wcout);}
+    if(command==L"bluetooth-rebind"){std::wstring name;for(int i=2;i+1<argc;++i)if(std::wstring_view(argv[i])==L"--name")name=argv[++i];return xm5::rebindBluetoothHid(name,std::wcout);}
     if(command==L"bluetooth-generic-hid")return xm5::useGenericHidDriver(std::wcout);
     xm5::HidBackend hid;xm5::SensorBackend sensor;
     bool includeDisabled=false;if(command==L"probe")for(int i=2;i<argc;++i)if(std::wstring_view(argv[i])==L"--include-disabled")includeDisabled=true;
     auto devices=hid.enumerate(!includeDisabled);auto sensors=sensor.enumerate();
-    if(command==L"probe"){for(const auto& d:devices)printDevice(d);for(const auto& s:sensors)std::wcout<<L"Sensor API "<<s.friendlyName<<L" | "<<s.description<<L" | "<<s.id<<L'\n';const auto found=std::any_of(devices.begin(),devices.end(),[](const auto& d){return d.androidHeadTracker;})||std::any_of(sensors.begin(),sensors.end(),[](const auto& s){return s.androidHeadTracker;});return found?0:2;}
+    if(command==L"probe"){for(const auto& d:devices)printDevice(d);for(const auto& s:sensors)std::wcout<<L"Sensor API "<<s.friendlyName<<L" | "<<s.description<<L" | "<<s.id<<L'\n';const auto found=std::any_of(devices.begin(),devices.end(),[](const auto& d){return d.androidHeadTracker;})||std::any_of(sensors.begin(),sensors.end(),[](const auto& s){return s.androidHeadTracker;});
+        for(const auto& d:devices)if(d.androidHeadTracker)std::wcout<<std::format(L"\nVerified Android head tracker on '{}'.\n",d.bluetoothName.empty()?(d.product.empty()?d.instanceId:d.product):d.bluetoothName);
+        if(!found){
+            std::wcout<<L"\nNo Android Head Tracker HID sensor was found.\n";
+            if(const auto airpods=pairedAirPodsName();!airpods.empty())std::wcout<<L"Note: '"<<airpods<<L"' is paired, but AirPods use Apple's proprietary accessory\nprotocol (L2CAP PSM 0x1001), which Windows does not expose to applications.\nHead tracking cannot be read from AirPods on Windows without a third-party\nkernel driver. See README > Compatibility.\n";
+        }
+        return found?0:2;}
     auto selected=std::find_if(devices.begin(),devices.end(),[](const auto& d){return d.androidHeadTracker;});
     if(command==L"dump"){if(selected==devices.end()){std::wcerr<<L"No verified raw HID head tracker is accessible; Sensor API cannot expose raw packets.\n";return 2;}unsigned seconds{};for(int i=2;i+1<argc;++i)if(std::wstring_view(argv[i])==L"--seconds")seconds=std::wcstoul(argv[++i],nullptr,10);if(!hid.connect(*selected,[](const auto& b){std::wcout<<xm5::hexDump(b)<<L'\n';},[](auto){}))return 3;const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(seconds);while(!stopRequested&&(!seconds||std::chrono::steady_clock::now()<deadline))std::this_thread::sleep_for(std::chrono::milliseconds(100));hid.disconnect();return 0;}
     if(command==L"bridge"){
@@ -1437,8 +1577,20 @@ int wmain(int argc,wchar_t** argv){const std::wstring command=argc>1?argv[1]:L"g
         std::wcout<<std::format(L"Streaming head-tracking data:\n  OpenTrack doubles -> UDP 127.0.0.1:{}\n  JSON telemetry    -> UDP 127.0.0.1:{}\n(loopback only; unauthenticated -- do not forward to an untrusted network)\n",port,port+1);
         xm5::OrientationFilter filter(config);auto selectedSensor=std::find_if(sensors.begin(),sensors.end(),[](const auto& s){return s.androidHeadTracker;});
         auto output=[&](xm5::TrackingSample s){auto out=filter.process(std::move(s));udp.send(out);std::wcout<<std::format(L"\rYPR {:7.2f} {:7.2f} {:7.2f}  {:5.1f} pps   ",out.euler.yaw,out.euler.pitch,out.euler.roll,out.packetsPerSecond)<<std::flush;};
-        auto connect=[&]{if(selected!=devices.end())return hid.connect(*selected,{},output);if(selectedSensor!=sensors.end())return sensor.connect(*selectedSensor,output);return false;};
-        if(!connect())return 3;
+        auto connect=[&]{
+            if(selected!=devices.end()){
+                const auto& name=!selected->bluetoothName.empty()?selected->bluetoothName:selected->product;
+                udp.setDeviceLabel(name);
+                if(!name.empty())std::wcout<<L"Tracking headset: "<<name<<L'\n';
+                return hid.connect(*selected,{},output);
+            }
+            if(selectedSensor!=sensors.end()){udp.setDeviceLabel(selectedSensor->friendlyName);std::wcout<<L"Tracking headset (Sensor API): "<<selectedSensor->friendlyName<<L'\n';return sensor.connect(*selectedSensor,output);}
+            return false;};
+        if(!connect()){
+            std::wcerr<<L"No Android Head Tracker was found on any connected headset.\n";
+            if(const auto airpods=pairedAirPodsName();!airpods.empty())std::wcerr<<L"Note: '"<<airpods<<L"' is paired, but AirPods use Apple's proprietary protocol and\ncannot provide head tracking on Windows. See README > Compatibility.\n";
+            return 3;
+        }
         const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(seconds);while(!stopRequested&&(!seconds||std::chrono::steady_clock::now()<deadline)){if(!hid.connected()&&!sensor.connected()){std::wcerr<<L"\nDisconnected; probing for reconnection…\n";std::this_thread::sleep_for(std::chrono::seconds(2));devices=hid.enumerate();sensors=sensor.enumerate();selected=std::find_if(devices.begin(),devices.end(),[](const auto& d){return d.androidHeadTracker;});selectedSensor=std::find_if(sensors.begin(),sensors.end(),[](const auto& s){return s.androidHeadTracker;});connect();}std::this_thread::sleep_for(std::chrono::milliseconds(100));}
         hid.disconnect();sensor.disconnect();return 0;
     }

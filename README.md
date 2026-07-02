@@ -1,6 +1,7 @@
 # XM5 Head Tracker Bridge
 
-Head tracking on the **Sony WH-1000XM5**, on Windows, in a single C++ file.
+Head tracking on the **Sony WH-1000XM5** — and any other headset that speaks
+the Android Head Tracker protocol — on Windows, in a single C++ file.
 
 [![Build](https://github.com/NicholasSlattery/xm5-head-tracker/actions/workflows/build.yml/badge.svg)](https://github.com/NicholasSlattery/xm5-head-tracker/actions/workflows/build.yml)
 [![Latest release](https://img.shields.io/github/v/release/NicholasSlattery/xm5-head-tracker)](https://github.com/NicholasSlattery/xm5-head-tracker/releases/latest)
@@ -16,8 +17,10 @@ Windows API surfaces it, and (as far as I can find) no other tool exists for
 it. **This bridge is how you get live head-tracking data out of a WH-1000XM5
 on Windows.**
 
-It discovers the sensor, enables reporting, parses the headset's orientation,
-and streams it out over UDP — as
+It discovers the sensor, detects **which headset** it belongs to (the paired
+Bluetooth device's name is shown in the GUI, the CLI, and the JSON stream),
+enables reporting, parses the headset's orientation, and streams it out over
+UDP — as
 [OpenTrack](https://github.com/opentrack/opentrack) doubles **and** a JSON
 datagram — so you can drive sim/game head-look, spatial audio, or anything else
 that wants to know where your head is pointing. It also ships a flicker-free
@@ -84,16 +87,62 @@ descriptor and exits `0`; if not, it just lists what it saw and exits `2`.
 
 | Headset | Head tracking | Reported by |
 | ------- | ------------- | ----------- |
-| Sony WH-1000XM5 | ✅ Works | maintainer (tested) |
-| Sony WH-1000XM4 | ❓ Untested | — |
-| Sony WH-1000XM3 | ❓ Untested (likely no sensor) | — |
-| Other (Bose, etc.) | ❓ Untested | — |
+| Sony WH-1000XM5 \* | ✅ Works | maintainer (tested) |
+| Sony WH-1000XM6 | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony WF-1000XM6 | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony WF-1000XM5 | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony LinkBuds Open (WF-L910) | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony LinkBuds Fit (WF-LS910N) | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony ULT WEAR (WH-ULT900N) | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony LinkBuds (WF-L900) \* | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony LinkBuds S (WF-LS900N) \* | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony WH-1000XM4 | ❌ Unlikely | not on Sony's head-tracking list |
+| Sony WH-1000XM3 | ❌ Unlikely | not on Sony's head-tracking list |
+| Bose QuietComfort Ultra Headphones | ❓ Untested — possibly in the future | has head-tracked spatial audio |
+| Bose QuietComfort Ultra Earbuds | ❓ Untested — possibly in the future | has head-tracked spatial audio |
+| Other Bose models | ❌ Unlikely | no head-tracked spatial audio |
+| Apple AirPods (all models, incl. AirPods Pro) | ❌ Not possible on Windows | see below |
 
-Sony added head-tracked spatial audio on the newer models, so those are the
-likely candidates; older headsets probably don't carry the sensor at all. If
-you run `probe` on anything not listed above, please
+\* These models need the latest firmware first: install Sony's **Sound Connect**
+app, connect the headphones, and update before probing.
+
+Sony's own documentation lists the models above as supporting its head-tracking
+feature, and the WH-1000XM5 — the one model from that list tested so far —
+exposes the sensor to Windows through the standard Android Head Tracker
+protocol. The untested Sony models are therefore likely to work (possibly not
+today on current firmware, but very likely as firmware catches up); models not
+on Sony's list almost certainly carry no usable sensor. The Bose QuietComfort
+Ultra pair do head-tracked spatial audio, so they may eventually expose the
+same protocol, but that is unverified; other Bose models are unlikely. If you
+run `probe` on anything listed as untested, please
 [open an issue](https://github.com/NicholasSlattery/xm5-head-tracker/issues/new/choose)
-with the output — working or not — and I'll add it to this table.
+with the output — working or not — and I'll update this table.
+
+### Why AirPods can't work (yet)
+
+AirPods absolutely have the motion sensors — but Apple does not implement the
+Android Head Tracker HID protocol. Head tracking (and ANC control, ear
+detection, etc.) travels over **Apple's proprietary accessory protocol (AAP)**
+on a raw Bluetooth Classic L2CAP channel (PSM `0x1001`). Two hard blockers
+follow:
+
+1. **Windows has no user-mode API for that channel.** Desktop Windows exposes
+   RFCOMM sockets to applications, but custom Bluetooth Classic L2CAP channels
+   can only be opened by a **kernel-mode profile driver**
+   ([Microsoft's docs](https://learn.microsoft.com/en-us/windows-hardware/drivers/bluetooth/creating-a-l2cap-client-connection-to-a-remote-device)).
+   That's how [MagicPods](https://magicpods.app/magicaap/) does it on Windows —
+   it ships a custom driver. This project's hard rule is that it **never
+   installs a custom kernel driver**, so that path is out of scope here.
+2. **The head-tracking payload isn't publicly documented.** The
+   [LibrePods](https://github.com/kavishdevar/librepods) project has
+   reverse-engineered much of AAP, but head-orientation packets remain
+   unexplored territory even there.
+
+What this bridge does instead: it **recognises paired AirPods** and tells you
+exactly this — in `probe`, in `bridge`, and in the GUI — instead of failing
+silently. If Windows ever exposes user-mode L2CAP, or a maintained open
+AAP-bridge appears, an AirPods backend becomes feasible and contributions are
+welcome.
 
 ## Where the data goes (ports)
 
@@ -115,6 +164,7 @@ The JSON datagram (one per sample, `version: 2`):
 ```jsonc
 {
   "version": 2,
+  "device": "WH-1000XM5",                  // connected headset's Bluetooth name, or null
   "rotationVector":  [x, y, z],            // axis-angle, radians
   "quaternion":      [w, x, y, z],         // recentered orientation
   "yprDegrees":      [yaw, pitch, roll],   // degrees
@@ -203,26 +253,34 @@ xm5-headtracker.exe                 (no args -> diagnostics GUI)
 xm5-headtracker.exe probe [--include-disabled]
 xm5-headtracker.exe dump [--seconds N]
 xm5-headtracker.exe repair
-xm5-headtracker.exe bluetooth-probe [--all-le] [--name "WH-1000XM5"]
-xm5-headtracker.exe bluetooth-rebind [--name "WH-1000XM5"]
+xm5-headtracker.exe bluetooth-probe [--all-le] [--name FILTER]
+xm5-headtracker.exe bluetooth-rebind [--name FILTER]   (default: auto-detect)
 xm5-headtracker.exe bluetooth-generic-hid        (run from an elevated prompt)
 xm5-headtracker.exe bridge [--port 4242] [--seconds N]
                            [--axis-map YXZ] [--invert XZ] [--smoothing 0.18]
 xm5-headtracker.exe help | version
 ```
 
-- **`bridge`** is the main mode. It reconnects automatically and streams to the
-  ports described in [Where the data goes](#where-the-data-goes-ports).
-- **`probe`** prints discovered HID collections and Sensor API custom sensors.
+- **`bridge`** is the main mode. It prints which headset it is tracking,
+  reconnects automatically, and streams to the ports described in
+  [Where the data goes](#where-the-data-goes-ports).
+- **`probe`** prints discovered HID collections and Sensor API custom sensors,
+  names the headset a verified tracker belongs to, and explains why nothing was
+  found (including the AirPods case).
+- **`bluetooth-rebind`** (and `repair`) auto-detect the headset by checking
+  which paired device's SDP record carries the Android Head Tracker descriptor —
+  no other Bluetooth device's services are ever touched. Pass
+  `--name "<device name>"` to select one explicitly.
 - **`dump`** prints untouched HID input reports (`--seconds N` for a bounded run).
 - **`repair`** is the one-click recovery (see below).
 
 ## The GUI
 
-Launch with no arguments. You get a device list with full descriptor detail, a
-flicker-free live yaw/pitch/roll graph (double-buffered, with a degree grid and
-legend), live gyroscope/accelerometer readouts, the active UDP ports along the
-bottom, and:
+Launch with no arguments. You get a device list with full descriptor detail
+(headset devices are listed by their Bluetooth name, and the connected headset's
+name is shown in the title bar), a flicker-free live yaw/pitch/roll graph
+(double-buffered, with a degree grid and legend), live gyroscope/accelerometer
+readouts, the active UDP ports along the bottom, and:
 
 - **Refresh** — re-enumerate devices and reconnect.
 - **Repair Tracker** — one-click recovery when Windows won't enumerate the
@@ -241,12 +299,14 @@ application uses yaw/pitch/roll in degrees.
 
 ## When the sensor won't show up
 
-Windows sometimes pairs the XM5 but never creates the head-tracker HID node, or
-parks it with Device Manager **Code 10**. The bridge has read-only diagnostics
-and a targeted, driver-only recovery (it never installs a custom kernel driver):
+Windows sometimes pairs the headset but never creates the head-tracker HID
+node, or parks it with Device Manager **Code 10**. The bridge has read-only
+diagnostics and a targeted, driver-only recovery (it never installs a custom
+kernel driver):
 
 1. **Repair Tracker** in the GUI, or `xm5-headtracker.exe repair`. This closes
-   stale instances, re-enables only the XM5's standard HID service, binds the
+   stale instances, auto-detects which paired headset advertises the head
+   tracker, re-enables only that device's standard HID service, binds the
    failed node to Microsoft's inbox generic HID driver, verifies the
    `#AndroidHeadTracker#` marker, and reopens.
 2. If `bluetooth-probe` finds the Android descriptor but `probe` doesn't, run

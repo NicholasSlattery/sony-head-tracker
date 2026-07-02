@@ -33,6 +33,7 @@ One UTF-8 JSON object per sample, no trailing newline. `version` is currently
 | Field              | Type                | Units / notes                                              |
 | ------------------ | ------------------- | ---------------------------------------------------------- |
 | `version`          | int                 | Schema version (`2`).                                      |
+| `device`           | string or `null`    | Connected headset's Bluetooth name (e.g. `"WH-1000XM5"`), `null` when unresolved. Additive in 1.1.0. |
 | `rotationVector`   | `[x, y, z]`         | Axis-angle orientation, radians.                           |
 | `quaternion`       | `[w, x, y, z]`      | Recentered orientation quaternion.                         |
 | `yprDegrees`       | `[yaw, pitch, roll]`| Degrees.                                                   |
@@ -50,7 +51,7 @@ to match orientation.
 ### Example
 
 ```json
-{"version":2,"rotationVector":[0.012,-0.004,0.31],"quaternion":[0.987,0.006,-0.002,0.155],"yprDegrees":[17.84,-0.46,1.37],"gyroscope":[0.01,0.0,-0.02],"accelerometer":null,"angularVelocity":[0.01,0.0,-0.02],"resetCounter":0,"packetsPerSecond":25.0,"receiveLatencyMs":-1.0}
+{"version":2,"device":"WH-1000XM5","rotationVector":[0.012,-0.004,0.31],"quaternion":[0.987,0.006,-0.002,0.155],"yprDegrees":[17.84,-0.46,1.37],"gyroscope":[0.01,0.0,-0.02],"accelerometer":null,"angularVelocity":[0.01,0.0,-0.02],"resetCounter":0,"packetsPerSecond":25.0,"receiveLatencyMs":-1.0}
 ```
 
 ### Minimal Python reader

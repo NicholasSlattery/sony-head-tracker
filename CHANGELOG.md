@@ -6,6 +6,33 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-07-02
+
+### Added
+- **Headset detection.** The bridge now resolves which paired Bluetooth headset
+  the head-tracker HID node belongs to (via the PnP parent chain) and shows the
+  name in the GUI title bar and device list, in `probe` and `bridge` output,
+  and as a new additive `device` field in the JSON telemetry (`null` when
+  unresolved).
+- **AirPods awareness.** Paired AirPods are recognised in `probe`, `bridge`,
+  `bluetooth-probe`, and the GUI, with an explanation of why they cannot
+  provide head tracking on Windows: Apple uses its proprietary accessory
+  protocol over a raw L2CAP channel (PSM `0x1001`) that desktop Windows only
+  exposes to kernel-mode profile drivers, and this project never installs a
+  custom kernel driver. A README section documents the details.
+- `bluetooth-probe` prints a per-device verdict after each SDP query (Android
+  Head Tracker advertised / AirPods explanation).
+
+### Changed
+- **Any-headset support, no Sony assumptions.** `repair` and `bluetooth-rebind`
+  no longer hardcode `WH-1000XM5`: with no `--name`, they auto-detect the
+  headset whose SDP record carries the Android Head Tracker HID descriptor
+  (read-only check), so no unrelated Bluetooth device's services are ever
+  touched. `bluetooth-probe` now defaults to listing every paired device;
+  deep GATT reads still require `--name` or `--all-le`.
+- GUI title, usage text, and messages are generic ("Head Tracker Bridge");
+  the waiting message no longer assumes an XM5.
+
 ## [1.0.0] - 2026-07-01
 
 ### Added
@@ -53,6 +80,7 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   filtering with recenter and drift correction, OpenTrack + JSON UDP output,
   diagnostics GUI, and one-click driver-only "Repair Tracker" recovery.
 
-[Unreleased]: https://github.com/NicholasSlattery/xm5-head-tracker/compare/v1.0.0...HEAD
+[Unreleased]: https://github.com/NicholasSlattery/xm5-head-tracker/compare/v1.1.0...HEAD
+[1.1.0]: https://github.com/NicholasSlattery/xm5-head-tracker/compare/v1.0.0...v1.1.0
 [1.0.0]: https://github.com/NicholasSlattery/xm5-head-tracker/compare/v0.1.0...v1.0.0
 [0.1.0]: https://github.com/NicholasSlattery/xm5-head-tracker/releases/tag/v0.1.0
