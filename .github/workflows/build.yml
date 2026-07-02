@@ -26,7 +26,9 @@ jobs:
       - name: Compile
         shell: cmd
         run: |
-          cl /nologo /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE xm5_head_tracker.cpp /Fe:xm5-headtracker.exe
+          rc /nologo app.rc
+          if errorlevel 1 exit /b 1
+          cl /nologo /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE xm5_head_tracker.cpp app.res /Fe:xm5-headtracker.exe
           if errorlevel 1 exit /b 1
 
       - name: Upload binary

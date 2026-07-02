@@ -25,9 +25,15 @@ if not defined VSPATH (
 call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
 
 :build
-cl /nologo /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE xm5_head_tracker.cpp /Fe:xm5-headtracker.exe
+rc /nologo app.rc
+if not %errorlevel%==0 (
+  echo.
+  echo Resource compile failed.
+  exit /b 1
+)
+cl /nologo /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE xm5_head_tracker.cpp app.res /Fe:xm5-headtracker.exe
 if %errorlevel%==0 (
-  del /q xm5_head_tracker.obj >nul 2>nul
+  del /q xm5_head_tracker.obj app.res >nul 2>nul
   echo.
   echo Built xm5-headtracker.exe
 ) else (

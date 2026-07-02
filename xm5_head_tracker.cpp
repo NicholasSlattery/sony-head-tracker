@@ -26,9 +26,11 @@
 // checked).
 //
 // BUILD (Developer PowerShell / x64 Native Tools Command Prompt for VS):
+//   rc /nologo app.rc
 //   cl /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 ^
-//      /DUNICODE /D_UNICODE xm5_head_tracker.cpp /Fe:xm5-headtracker.exe
-// (All required import libraries are pulled in via #pragma comment below, so no
+//      /DUNICODE /D_UNICODE xm5_head_tracker.cpp app.res /Fe:xm5-headtracker.exe
+// (app.rc embeds the icon, version info, and the Common Controls v6 manifest.
+//  All required import libraries are pulled in via #pragma comment below, so no
 //  extra linker arguments are needed. Requires a C++20-capable MSVC and a current
 //  Windows 11 SDK.)
 //
@@ -101,10 +103,13 @@
 #include <Sensors.h>
 #include <PortableDeviceTypes.h>
 #include <CommCtrl.h>
+#include <Uxtheme.h>
 #include <dwmapi.h>
 #include <shellapi.h>
 #include <objbase.h>
 #include <wrl/client.h>
+#include <fcntl.h>
+#include <io.h>
 
 #include <algorithm>
 #include <array>
@@ -144,6 +149,7 @@
 #pragma comment(lib, "propsys.lib")
 #pragma comment(lib, "BluetoothApis.lib")
 #pragma comment(lib, "comctl32.lib")
+#pragma comment(lib, "uxtheme.lib")
 #pragma comment(lib, "dwmapi.lib")
 #pragma comment(lib, "shell32.lib")
 
@@ -155,7 +161,7 @@ using Microsoft::WRL::ComPtr;
 namespace xm5 {
 
 // Project version -- keep in sync with CHANGELOG.md and release tags.
-inline constexpr std::wstring_view kVersion = L"1.1.0";
+inline constexpr std::wstring_view kVersion = L"1.2.0";
 
 struct Vec3 {
     double x{};
@@ -1325,43 +1331,102 @@ int runGui(HINSTANCE instance, int showCommand);
 namespace {
 constexpr UINT kSampleMessage=WM_APP+1;
 constexpr UINT kRawMessage=WM_APP+2;
-constexpr int kRefresh=1001,kRecenter=1002,kDeviceList=1003,kRepair=1004;
+constexpr int kRefresh=1001,kRecenter=1002,kDeviceList=1003,kRepair=1004,kShowAll=1005;
 
 class Window {
 public:
-    HINSTANCE instance{}; HWND hwnd{}, list{}, details{}, raw{}, stats{}, motion{}, ports{}, refresh{}, repair{}, recenter{}, invertX{}, invertY{}, invertZ{}, mapping{}, smoothing{};
-    HFONT font{}; HBRUSH background{}; HBRUSH panel{}; HidBackend hid; SensorBackend sensors; OrientationFilter filter; UdpOutput udp;
+    HINSTANCE instance{}; HWND hwnd{}, list{}, details{}, raw{}, stats{}, motion{}, refresh{}, repair{}, recenter{}, invertX{}, invertY{}, invertZ{}, mapping{}, smoothing{}, showAll{};
+    HFONT font{}, titleFont{}, sectionFont{}; HICON appIcon{};
+    HBRUSH background{}, panel{}, headerBrush{};
+    HidBackend hid; SensorBackend sensors; OrientationFilter filter; UdpOutput udp;
     std::vector<DeviceInfo> devices; std::vector<SensorInfo> sensorDevices;
+    std::vector<std::size_t> listMap;   // list row -> devices index; devices.size()+i for Sensor API rows; SIZE_MAX for the info row
     std::array<std::vector<float>,3> history; bool connected{}; FilterConfig filterConfig{};
     std::uint16_t udpPort{4242};
-    std::wstring headsetName;   // resolved Bluetooth name of the connected head tracker
+    std::wstring headsetName;                                 // resolved Bluetooth name of the connected head tracker
+    std::wstring statusText{L"Searching for a head tracker…"};
+    COLORREF statusColor{RGB(150,160,176)};
 
     // Cohesive dark palette shared by the back-buffer paint and the child controls.
-    static constexpr COLORREF kWindowBg{RGB(24,28,35)};
-    static constexpr COLORREF kPanelBg{RGB(16,19,25)};
-    static constexpr COLORREF kText{RGB(222,227,236)};
+    static constexpr COLORREF kWindowBg{RGB(20,23,30)};
+    static constexpr COLORREF kHeaderBg{RGB(27,31,42)};
+    static constexpr COLORREF kPanelBg{RGB(14,17,23)};
+    static constexpr COLORREF kText{RGB(226,231,240)};
     static constexpr COLORREF kMuted{RGB(150,160,176)};
-    static constexpr COLORREF kGrid{RGB(44,51,64)};
+    static constexpr COLORREF kGrid{RGB(46,53,66)};
+    static constexpr COLORREF kBorder{RGB(56,64,80)};
+    static constexpr COLORREF kAccent{RGB(96,165,255)};
+    static constexpr COLORREF kOk{RGB(94,214,140)};
+    static constexpr COLORREF kWarn{RGB(255,196,86)};
 
-    ~Window(){hid.disconnect();sensors.disconnect();if(font)DeleteObject(font);if(background)DeleteObject(background);if(panel)DeleteObject(panel);}
+    ~Window(){hid.disconnect();sensors.disconnect();for(auto f:{font,titleFont,sectionFont})if(f)DeleteObject(f);for(auto b:{background,panel,headerBrush})if(b)DeleteObject(b);if(appIcon)DestroyIcon(appIcon);}
 
-    // Graph rectangle, computed once so paint() and invalidation agree exactly.
-    RECT graphRect() const { RECT r{}; GetClientRect(hwnd,&r); return RECT{12,r.bottom-125,r.right-12,r.bottom-12}; }
+    // Fixed regions, computed from the client size so paint(), layout(), and
+    // invalidation always agree exactly.
+    RECT clientRect() const { RECT r{}; GetClientRect(hwnd,&r); return r; }
+    RECT headerRect() const { const auto r=clientRect(); return RECT{0,0,r.right,64}; }
+    RECT outputRect() const { const auto r=clientRect(); return RECT{16,r.bottom-322,r.right-16,r.bottom-230}; }
+    RECT graphRect()  const { const auto r=clientRect(); return RECT{16,r.bottom-124,r.right-16,r.bottom-14}; }
+    int  listWidth()  const { const auto r=clientRect(); return std::max(300,static_cast<int>(r.right)*17/50); }
+
+    void setStatus(std::wstring text,COLORREF color){
+        statusText=std::move(text);statusColor=color;
+        const auto h=headerRect();InvalidateRect(hwnd,&h,FALSE);
+    }
     void enumerate(){
-        hid.disconnect();sensors.disconnect();connected=false;devices=hid.enumerate();sensorDevices=sensors.enumerate();SendMessageW(list,LB_RESETCONTENT,0,0);
-        for(const auto& d:devices){const auto& shown=!d.bluetoothName.empty()?d.bluetoothName:(!d.product.empty()?d.product:d.instanceId);auto label=std::format(L"HID {:04X}:{:04X}  {}",d.vendorId,d.productId,shown);SendMessageW(list,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(label.c_str()));}
-        for(const auto& s:sensorDevices){auto label=std::format(L"Sensor API  {}",s.friendlyName);SendMessageW(list,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(label.c_str()));}
-        if(!devices.empty()||!sensorDevices.empty())SendMessageW(list,LB_SETCURSEL,0,0);
-        connectFirst();if(!devices.empty()||!sensorDevices.empty())showDetails(0);
+        hid.disconnect();sensors.disconnect();connected=false;devices=hid.enumerate();sensorDevices=sensors.enumerate();
+        // Verified trackers first, unverified custom-sensor candidates second,
+        // every other HID collection (mice, touchpads, ...) last.
+        std::stable_sort(devices.begin(),devices.end(),[](const auto& a,const auto& b){
+            const auto rank=[](const DeviceInfo& d){return d.androidHeadTracker?0:(d.usagePage==kSensorPage&&d.usage==kOtherCustom)?1:2;};
+            return rank(a)<rank(b);});
+        rebuildList();connectFirst();showDetails(0);
+    }
+    // Fills the device list. By default only head-tracker candidates are shown;
+    // the "Show all devices" checkbox reveals every HID collection for debugging.
+    void rebuildList(){
+        SendMessageW(list,LB_RESETCONTENT,0,0);listMap.clear();
+        const bool everything=SendMessageW(showAll,BM_GETCHECK,0,0)==BST_CHECKED;
+        const auto add=[&](const std::wstring& label,std::size_t mapped){SendMessageW(list,LB_ADDSTRING,0,reinterpret_cast<LPARAM>(label.c_str()));listMap.push_back(mapped);};
+        for(std::size_t i=0;i<devices.size();++i){
+            const auto& d=devices[i];
+            const bool candidate=d.usagePage==kSensorPage&&d.usage==kOtherCustom;
+            if(!everything&&!candidate)continue;
+            const auto& shown=!d.bluetoothName.empty()?d.bluetoothName:(!d.product.empty()?d.product:d.instanceId);
+            if(d.androidHeadTracker)add(std::format(L"✔  {}   — Android head tracker",shown),i);
+            else if(candidate)add(std::format(L"?  {}   — custom sensor, no Android marker",shown),i);
+            else add(std::format(L"HID {:04X}:{:04X}  {}",d.vendorId,d.productId,shown),i);
+        }
+        for(std::size_t i=0;i<sensorDevices.size();++i){
+            const auto& s=sensorDevices[i];
+            if(!everything&&!s.androidHeadTracker)continue;
+            add(std::format(L"{}  {}   — Windows Sensor API",s.androidHeadTracker?L"✔":L"·",s.friendlyName),devices.size()+i);
+        }
+        if(listMap.empty())add(L"No head tracker found — press Repair Tracker (admin approval required)",SIZE_MAX);
+        SendMessageW(list,LB_SETCURSEL,0,0);
     }
     void showDetails(int selection){
         std::wostringstream o;
-        if(selection>=0&&static_cast<std::size_t>(selection)<devices.size()){
-            const auto& d=devices[selection];o<<L"Path: "<<d.path<<L"\r\nInstance: "<<d.instanceId<<L"\r\nManufacturer: "<<d.manufacturer<<L"\r\nProduct: "<<d.product<<L"\r\nBluetooth headset: "<<(d.bluetoothName.empty()?L"(unresolved)":d.bluetoothName.c_str());
+        const auto row=static_cast<std::size_t>(selection);
+        if(selection<0||row>=listMap.size()||listMap[row]==SIZE_MAX){
+            o<<L"No Android Head Tracker HID collection is currently visible.\r\n\r\n"
+             <<L"  1.  Make sure the headphones are paired, powered on, and connected.\r\n"
+             <<L"  2.  Press Repair Tracker in the toolbar. It asks for one administrator\r\n"
+             <<L"      approval and only touches the headset's own HID service — it never\r\n"
+             <<L"      installs a custom driver or touches other devices.\r\n"
+             <<L"  3.  Tick 'Show all devices' to inspect every HID collection Windows sees.\r\n\r\n"
+             <<L"AirPods (and other Apple headphones) cannot work: Apple uses a proprietary\r\n"
+             <<L"protocol that Windows does not expose to applications — see the README.";
+        }else if(listMap[row]<devices.size()){
+            const auto& d=devices[listMap[row]];
+            o<<L"Path: "<<d.path<<L"\r\nInstance: "<<d.instanceId<<L"\r\nManufacturer: "<<d.manufacturer<<L"\r\nProduct: "<<d.product<<L"\r\nBluetooth headset: "<<(d.bluetoothName.empty()?L"(unresolved)":d.bluetoothName.c_str());
             o<<std::format(L"\r\nUsage: 0x{:04X}:0x{:04X}   VID/PID: {:04X}:{:04X}\r\nInput bytes: {}   Feature bytes: {}\r\nAndroid description: {}\r\nVerified: {}\r\n\r\nDescriptor fields:\r\n",d.usagePage,d.usage,d.vendorId,d.productId,d.inputReportBytes,d.featureReportBytes,std::wstring(d.sensorDescription.begin(),d.sensorDescription.end()),d.androidHeadTracker?L"yes":L"no");
             for(const auto& f:d.fields)o<<std::format(L"{} id={} usage={:04X}:{:04X} count={} bits={} logical={}..{} physical={}..{} exp={} unit=0x{:X} data={}\r\n",f.feature?L"FEATURE":L"INPUT",f.reportId,f.usagePage,f.usage,f.reportCount,f.bitSize,f.logicalMin,f.logicalMax,f.physicalMin,f.physicalMax,f.unitExponent,f.unit,f.dataIndex);
             for(const auto& v:d.featureValues)o<<L"Feature: "<<std::wstring(v.begin(),v.end())<<L"\r\n";
-        }else{const auto i=static_cast<std::size_t>(selection)-devices.size();if(i<sensorDevices.size()){const auto& s=sensorDevices[i];o<<L"Windows Sensor API fallback\r\nName: "<<s.friendlyName<<L"\r\nDescription: "<<s.description<<L"\r\nID: "<<s.id<<L"\r\nType: "<<s.type;}}
+        }else{
+            const auto& s=sensorDevices[listMap[row]-devices.size()];
+            o<<L"Windows Sensor API fallback\r\nName: "<<s.friendlyName<<L"\r\nDescription: "<<s.description<<L"\r\nID: "<<s.id<<L"\r\nType: "<<s.type;
+        }
         o<<L"\r\n\r\nDiscovery and permission log:\r\n";for(const auto& line:Logger::instance().history())o<<line<<L"\r\n";
         SetWindowTextW(details,o.str().c_str());
     }
@@ -1371,15 +1436,26 @@ public:
             headsetName=!it->bluetoothName.empty()?it->bluetoothName:(!it->product.empty()?it->product:L"head tracker");
             udp.setDeviceLabel(headsetName);
             connected=hid.connect(*it,[w=hwnd](const auto& bytes){PostMessageW(w,kRawMessage,0,reinterpret_cast<LPARAM>(new std::vector<std::uint8_t>(bytes)));},[w=hwnd](TrackingSample s){PostMessageW(w,kSampleMessage,0,reinterpret_cast<LPARAM>(new TrackingSample(std::move(s))));});
-            if(connected){SetWindowTextW(hwnd,std::format(L"Head Tracker Bridge {} — {}",kVersion,headsetName).c_str());SetWindowTextW(stats,std::format(L"Connected to {}. Waiting for the first sample…",headsetName).c_str());}
+            if(connected){
+                SetWindowTextW(hwnd,std::format(L"Head Tracker Bridge {} — {}",kVersion,headsetName).c_str());
+                setStatus(std::format(L"Tracking {}",headsetName),kOk);
+                SetWindowTextW(stats,std::format(L"Connected to {}. Waiting for the first sample…",headsetName).c_str());
+            }else setStatus(std::format(L"Found {} but could not open it — see the log in the details pane",headsetName),kWarn);
             return;}
         const auto fallback=std::find_if(sensorDevices.begin(),sensorDevices.end(),[](const auto& s){return s.androidHeadTracker;});
-        if(fallback!=sensorDevices.end()){headsetName=fallback->friendlyName;udp.setDeviceLabel(headsetName);SetWindowTextW(raw,L"Raw packet: unavailable through Windows Sensor API");connected=sensors.connect(*fallback,[w=hwnd](TrackingSample s){PostMessageW(w,kSampleMessage,0,reinterpret_cast<LPARAM>(new TrackingSample(std::move(s))));});return;}
+        if(fallback!=sensorDevices.end()){
+            headsetName=fallback->friendlyName;udp.setDeviceLabel(headsetName);
+            SetWindowTextW(raw,L"Raw packet: unavailable through Windows Sensor API");
+            connected=sensors.connect(*fallback,[w=hwnd](TrackingSample s){PostMessageW(w,kSampleMessage,0,reinterpret_cast<LPARAM>(new TrackingSample(std::move(s))));});
+            if(connected)setStatus(std::format(L"Tracking {} via the Windows Sensor API",headsetName),kOk);
+            return;}
         headsetName.clear();udp.setDeviceLabel({});
         SetWindowTextW(hwnd,std::format(L"Head Tracker Bridge {}",kVersion).c_str());
-        std::wstring waiting=L"Waiting for an Android Head Tracker HID profile. Power-cycle the headphones if they are already paired.";
-        for(const auto& name:pairedBluetoothDeviceNames())if(containsInsensitive(name,L"AirPods")){waiting+=L"  Note: AirPods were detected — Apple does not expose head tracking to Windows (proprietary protocol); see README › Compatibility.";break;}
-        SetWindowTextW(stats,waiting.c_str());
+        bool airpods=false;for(const auto& name:pairedBluetoothDeviceNames())if(containsInsensitive(name,L"AirPods")){airpods=true;break;}
+        setStatus(L"No head tracker found — if the headset is paired and on, press Repair Tracker (admin approval required)",kWarn);
+        SetWindowTextW(stats,airpods
+            ?L"AirPods detected: Apple's protocol is not readable on Windows — only Android-Head-Tracker headsets can work. See README › Compatibility."
+            :L"Waiting for an Android Head Tracker HID profile. Power-cycle the headphones if they are already paired.");
     }
     void onSample(std::unique_ptr<TrackingSample> s){
         auto filtered=filter.process(std::move(*s));udp.send(filtered);for(int i=0;i<3;++i){history[i].push_back(static_cast<float>(i==0?filtered.euler.yaw:i==1?filtered.euler.pitch:filtered.euler.roll));if(history[i].size()>360)history[i].erase(history[i].begin());}
@@ -1395,13 +1471,60 @@ public:
         filterConfig.axes.sign={SendMessageW(invertX,BM_GETCHECK,0,0)==BST_CHECKED?-1.0:1.0,SendMessageW(invertY,BM_GETCHECK,0,0)==BST_CHECKED?-1.0:1.0,SendMessageW(invertZ,BM_GETCHECK,0,0)==BST_CHECKED?-1.0:1.0};
         filterConfig.smoothing=std::clamp(SendMessageW(smoothing,TBM_GETPOS,0,0)/100.0,0.01,1.0);filter.setConfig(filterConfig);
     }
-    void layout(){RECT r{};GetClientRect(hwnd,&r);const int w=r.right,h=r.bottom;
-        MoveWindow(list,12,52,w/3-18,h-244,TRUE);MoveWindow(details,w/3+4,52,w-w/3-16,h-244,TRUE);
-        MoveWindow(raw,12,h-230,w-24,24,TRUE);MoveWindow(stats,12,h-202,w-24,24,TRUE);MoveWindow(motion,12,h-176,w-24,24,TRUE);MoveWindow(ports,12,h-150,w-24,22,TRUE);
-        MoveWindow(refresh,12,10,90,28,TRUE);MoveWindow(repair,108,10,120,28,TRUE);MoveWindow(recenter,234,10,95,28,TRUE);MoveWindow(mapping,336,10,72,200,TRUE);MoveWindow(invertX,416,10,66,28,TRUE);MoveWindow(invertY,481,10,66,28,TRUE);MoveWindow(invertZ,546,10,66,28,TRUE);MoveWindow(smoothing,620,8,180,32,TRUE);}
+    void layout(){const auto r=clientRect();const int w=r.right,h=r.bottom;
+        // Toolbar row under the header.
+        MoveWindow(refresh,16,76,96,30,TRUE);MoveWindow(repair,118,76,158,30,TRUE);MoveWindow(recenter,282,76,96,30,TRUE);
+        MoveWindow(mapping,412,80,74,220,TRUE);MoveWindow(invertX,494,80,88,24,TRUE);MoveWindow(invertY,586,80,88,24,TRUE);MoveWindow(invertZ,678,80,88,24,TRUE);MoveWindow(smoothing,772,76,160,30,TRUE);
+        // Device list + details columns, above the painted output panel.
+        const int lw=listWidth();const int panelTop=136;const int panelBottom=h-334;
+        MoveWindow(showAll,16+lw-152,112,152,20,TRUE);
+        MoveWindow(list,16,panelTop,lw,panelBottom-panelTop,TRUE);
+        MoveWindow(details,16+lw+12,panelTop,w-44-lw,panelBottom-panelTop,TRUE);
+        // Telemetry lines between the output panel and the graph.
+        MoveWindow(raw,16,h-222,w-32,22,TRUE);MoveWindow(stats,16,h-196,w-32,22,TRUE);MoveWindow(motion,16,h-170,w-32,22,TRUE);}
+    void paintSectionLabel(HDC dc,int x,int y,const wchar_t* text){
+        SetBkMode(dc,TRANSPARENT);SelectObject(dc,sectionFont);SetTextColor(dc,kMuted);
+        TextOutW(dc,x,y,text,static_cast<int>(wcslen(text)));
+    }
+    // Header band: app icon, title, version, and the live status line.
+    void paintHeader(HDC dc){
+        const auto hr=headerRect();FillRect(dc,&hr,headerBrush);
+        RECT line{hr.left,hr.bottom-1,hr.right,hr.bottom};HBRUSH lb=CreateSolidBrush(kBorder);FillRect(dc,&line,lb);DeleteObject(lb);
+        if(appIcon)DrawIconEx(dc,16,16,appIcon,32,32,0,nullptr,DI_NORMAL);
+        SetBkMode(dc,TRANSPARENT);
+        SelectObject(dc,titleFont);SetTextColor(dc,kText);
+        constexpr std::wstring_view title=L"Head Tracker Bridge";
+        TextOutW(dc,60,6,title.data(),static_cast<int>(title.size()));
+        SIZE ts{};GetTextExtentPoint32W(dc,title.data(),static_cast<int>(title.size()),&ts);
+        SelectObject(dc,font);SetTextColor(dc,kMuted);
+        const auto version=std::wstring(kVersion);
+        TextOutW(dc,60+ts.cx+12,12,version.c_str(),static_cast<int>(version.size()));
+        // Status dot + text.
+        HBRUSH dot=CreateSolidBrush(statusColor);auto oldBrush=SelectObject(dc,dot);
+        HPEN nopen=CreatePen(PS_NULL,0,0);auto oldPen=SelectObject(dc,nopen);
+        Ellipse(dc,60,42,70,52);
+        SelectObject(dc,oldBrush);SelectObject(dc,oldPen);DeleteObject(dot);DeleteObject(nopen);
+        SetTextColor(dc,kText);
+        TextOutW(dc,78,38,statusText.c_str(),static_cast<int>(statusText.size()));
+    }
+    // Output panel: exactly where the data goes, in plain language.
+    void paintOutput(HDC dc){
+        const auto r=outputRect();
+        FillRect(dc,&r,panel);HBRUSH bb=CreateSolidBrush(kBorder);FrameRect(dc,&r,bb);DeleteObject(bb);
+        paintSectionLabel(dc,r.left+12,r.top+8,L"OUTPUT — WHERE THE DATA GOES   (UDP to 127.0.0.1, loopback only: nothing leaves this PC)");
+        SetBkMode(dc,TRANSPARENT);SelectObject(dc,font);
+        const auto row=[&](int y,const wchar_t* what,const std::wstring& endpoint,const wchar_t* note){
+            SetTextColor(dc,kText);TextOutW(dc,r.left+12,y,what,static_cast<int>(wcslen(what)));
+            SetTextColor(dc,kAccent);TextOutW(dc,r.left+150,y,endpoint.c_str(),static_cast<int>(endpoint.size()));
+            SetTextColor(dc,kMuted);TextOutW(dc,r.left+320,y,note,static_cast<int>(wcslen(note)));
+        };
+        row(r.top+30,L"OpenTrack",std::format(L"UDP 127.0.0.1:{}",udpPort),L"six doubles (x y z yaw pitch roll) — set OpenTrack's 'UDP over network' input to this port");
+        row(r.top+56,L"JSON telemetry",std::format(L"UDP 127.0.0.1:{}",udpPort+1),L"one JSON object per sample, for your own apps — format in docs/PROTOCOL.md");
+    }
     // Renders the live graph into an arbitrary DC (used by the back buffer).
     void drawGraph(HDC dc, const RECT& graph){
         FillRect(dc,&graph,panel);
+        HBRUSH bb=CreateSolidBrush(kBorder);FrameRect(dc,&graph,bb);DeleteObject(bb);
         const int gw=graph.right-graph.left, gh=graph.bottom-graph.top;
         const int mid=graph.top+gh/2, plot=gh-26; // vertical pixels for ±180°
         SetBkMode(dc,TRANSPARENT);
@@ -1410,26 +1533,37 @@ public:
         SelectObject(dc,font);SetTextColor(dc,kMuted);
         for(int deg=-180;deg<=180;deg+=90){
             const int y=mid-static_cast<int>(deg*(plot/360.0));
-            MoveToEx(dc,graph.left,y,nullptr);LineTo(dc,graph.right,y);
+            MoveToEx(dc,graph.left+1,y,nullptr);LineTo(dc,graph.right-1,y);
             const auto label=std::format(L"{:>4}°",deg);TextOutW(dc,graph.left+4,y-16,label.c_str(),static_cast<int>(label.size()));
         }
         SelectObject(dc,oldPen);DeleteObject(grid);
+        paintSectionLabel(dc,graph.left+64,graph.top+6,L"LIVE ORIENTATION — degrees, Ctrl+Alt+C recenters");
         // Traces.
-        const std::array<COLORREF,3> colors{RGB(74,164,255),RGB(120,224,140),RGB(255,120,150)};
+        const std::array<COLORREF,3> colors{RGB(96,165,255),RGB(94,214,140),RGB(255,120,150)};
         for(int a=0;a<3;++a){if(history[a].size()<2)continue;HPEN pen=CreatePen(PS_SOLID,2,colors[a]);auto old=SelectObject(dc,pen);
             for(std::size_t i=0;i<history[a].size();++i){const auto x=graph.left+static_cast<int>(i*(gw-1)/359.0);const auto y=mid-static_cast<int>(std::clamp(history[a][i],-180.0f,180.0f)*(plot/360.0f));if(i)LineTo(dc,x,y);else MoveToEx(dc,x,y,nullptr);}
             SelectObject(dc,old);DeleteObject(pen);}
-        // Legend (top-right swatches).
-        const std::array<const wchar_t*,3> names{L"Yaw",L"Pitch",L"Roll"};int lx=graph.right-200;
-        for(int a=0;a<3;++a){RECT sw{lx,graph.top+8,lx+12,graph.top+20};HBRUSH b=CreateSolidBrush(colors[a]);FillRect(dc,&sw,b);DeleteObject(b);SetTextColor(dc,kText);TextOutW(dc,lx+16,graph.top+5,names[a],static_cast<int>(wcslen(names[a])));lx+=66;}
+        // Legend with live values (top-right swatches).
+        SelectObject(dc,font);
+        const std::array<const wchar_t*,3> names{L"Yaw",L"Pitch",L"Roll"};int lx=graph.right-330;
+        for(int a=0;a<3;++a){
+            RECT sw{lx,graph.top+8,lx+12,graph.top+20};HBRUSH b=CreateSolidBrush(colors[a]);FillRect(dc,&sw,b);DeleteObject(b);
+            const auto value=history[a].empty()?std::wstring(L"—"):std::format(L"{:+.0f}°",history[a].back());
+            const auto text=std::format(L"{} {}",names[a],value);
+            SetTextColor(dc,kText);TextOutW(dc,lx+16,graph.top+5,text.c_str(),static_cast<int>(text.size()));lx+=110;
+        }
     }
     void paint(){
         PAINTSTRUCT ps{};auto dc=BeginPaint(hwnd,&ps);
-        RECT r{};GetClientRect(hwnd,&r);
+        const auto r=clientRect();
         // Double-buffer: build the frame off-screen, then blit once. This is what
         // eliminates the flicker the live graph used to cause at ~25 fps.
         HDC mem=CreateCompatibleDC(dc);HBITMAP bmp=CreateCompatibleBitmap(dc,r.right,r.bottom);auto oldBmp=SelectObject(mem,bmp);
         FillRect(mem,&r,background);
+        paintHeader(mem);
+        paintSectionLabel(mem,16,114,L"DEVICES");
+        paintSectionLabel(mem,16+listWidth()+12,114,L"DETAILS & ACTIVITY LOG");
+        paintOutput(mem);
         drawGraph(mem,graphRect());
         BitBlt(dc,0,0,r.right,r.bottom,mem,0,0,SRCCOPY);
         SelectObject(mem,oldBmp);DeleteObject(bmp);DeleteDC(mem);
@@ -1440,19 +1574,35 @@ public:
 LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp){auto* self=reinterpret_cast<Window*>(GetWindowLongPtrW(hwnd,GWLP_USERDATA));if(msg==WM_NCCREATE){self=reinterpret_cast<Window*>(reinterpret_cast<CREATESTRUCTW*>(lp)->lpCreateParams);self->hwnd=hwnd;SetWindowLongPtrW(hwnd,GWLP_USERDATA,reinterpret_cast<LONG_PTR>(self));}
     if(!self)return DefWindowProcW(hwnd,msg,wp,lp);
     switch(msg){
-    case WM_CREATE:{BOOL dark=TRUE;DwmSetWindowAttribute(hwnd,20,&dark,sizeof(dark));self->background=CreateSolidBrush(Window::kWindowBg);self->panel=CreateSolidBrush(Window::kPanelBg);self->font=CreateFontW(-17,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
-        self->refresh=CreateWindowW(L"BUTTON",L"Refresh",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kRefresh)),self->instance,nullptr);self->repair=CreateWindowW(L"BUTTON",L"Repair Tracker",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kRepair)),self->instance,nullptr);self->recenter=CreateWindowW(L"BUTTON",L"Recenter",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kRecenter)),self->instance,nullptr);self->list=CreateWindowW(L"LISTBOX",L"",WS_CHILD|WS_VISIBLE|WS_BORDER|LBS_NOTIFY|WS_VSCROLL,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDeviceList)),self->instance,nullptr);self->details=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"",WS_CHILD|WS_VISIBLE|ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->raw=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"Raw packet: waiting",WS_CHILD|WS_VISIBLE|ES_READONLY|ES_AUTOHSCROLL,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->stats=CreateWindowW(L"STATIC",L"Discovering devices…",WS_CHILD|WS_VISIBLE,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->motion=CreateWindowW(L"STATIC",L"Gyroscope  …        Accelerometer  …",WS_CHILD|WS_VISIBLE,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->ports=CreateWindowW(L"STATIC",L"",WS_CHILD|WS_VISIBLE,0,0,0,0,hwnd,nullptr,self->instance,nullptr);
+    case WM_CREATE:{BOOL dark=TRUE;DwmSetWindowAttribute(hwnd,20,&dark,sizeof(dark));
+        self->background=CreateSolidBrush(Window::kWindowBg);self->panel=CreateSolidBrush(Window::kPanelBg);self->headerBrush=CreateSolidBrush(Window::kHeaderBg);
+        self->font=CreateFontW(-17,0,0,0,FW_NORMAL,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+        self->titleFont=CreateFontW(-26,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+        self->sectionFont=CreateFontW(-13,0,0,0,FW_SEMIBOLD,FALSE,FALSE,FALSE,DEFAULT_CHARSET,OUT_DEFAULT_PRECIS,CLIP_DEFAULT_PRECIS,CLEARTYPE_QUALITY,DEFAULT_PITCH,L"Segoe UI");
+        self->appIcon=static_cast<HICON>(LoadImageW(self->instance,MAKEINTRESOURCEW(1),IMAGE_ICON,32,32,LR_DEFAULTCOLOR));
+        self->refresh=CreateWindowW(L"BUTTON",L"Refresh",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kRefresh)),self->instance,nullptr);self->repair=CreateWindowW(L"BUTTON",L"Repair Tracker",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kRepair)),self->instance,nullptr);self->recenter=CreateWindowW(L"BUTTON",L"Recenter",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kRecenter)),self->instance,nullptr);self->list=CreateWindowW(L"LISTBOX",L"",WS_CHILD|WS_VISIBLE|WS_BORDER|LBS_NOTIFY|WS_VSCROLL,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDeviceList)),self->instance,nullptr);self->details=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"",WS_CHILD|WS_VISIBLE|ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->raw=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"Raw packet: waiting",WS_CHILD|WS_VISIBLE|ES_READONLY|ES_AUTOHSCROLL,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->stats=CreateWindowW(L"STATIC",L"Discovering devices…",WS_CHILD|WS_VISIBLE,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->motion=CreateWindowW(L"STATIC",L"Gyroscope  …        Accelerometer  …",WS_CHILD|WS_VISIBLE,0,0,0,0,hwnd,nullptr,self->instance,nullptr);
         self->mapping=CreateWindowW(WC_COMBOBOXW,L"",WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST,0,0,0,0,hwnd,nullptr,self->instance,nullptr);for(const auto* text:{L"XYZ",L"XZY",L"YXZ",L"YZX",L"ZXY",L"ZYX"})SendMessageW(self->mapping,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(text));SendMessageW(self->mapping,CB_SETCURSEL,2,0);
         self->invertX=CreateWindowW(L"BUTTON",L"Invert X",WS_CHILD|WS_VISIBLE|BS_AUTOCHECKBOX,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->invertY=CreateWindowW(L"BUTTON",L"Invert Y",WS_CHILD|WS_VISIBLE|BS_AUTOCHECKBOX,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->invertZ=CreateWindowW(L"BUTTON",L"Invert Z",WS_CHILD|WS_VISIBLE|BS_AUTOCHECKBOX,0,0,0,0,hwnd,nullptr,self->instance,nullptr);SendMessageW(self->invertX,BM_SETCHECK,BST_CHECKED,0);SendMessageW(self->invertZ,BM_SETCHECK,BST_CHECKED,0);self->smoothing=CreateWindowW(TRACKBAR_CLASSW,L"",WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS,0,0,0,0,hwnd,nullptr,self->instance,nullptr);SendMessageW(self->smoothing,TBM_SETRANGE,TRUE,MAKELONG(1,100));SendMessageW(self->smoothing,TBM_SETPOS,TRUE,18);
-        for(auto h:{self->refresh,self->repair,self->recenter,self->list,self->details,self->raw,self->stats,self->motion,self->ports,self->mapping,self->invertX,self->invertY,self->invertZ,self->smoothing})SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(self->font),TRUE);
-        self->udpPort=4242;self->udp.open("127.0.0.1",self->udpPort);SetWindowTextW(self->ports,std::format(L"Streaming  ›  OpenTrack doubles → UDP 127.0.0.1:{}    JSON telemetry → UDP 127.0.0.1:{}   (loopback only)",self->udpPort,self->udpPort+1).c_str());
+        self->showAll=CreateWindowW(L"BUTTON",L"Show all devices",WS_CHILD|WS_VISIBLE|BS_AUTOCHECKBOX,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShowAll)),self->instance,nullptr);
+        // The UAC shield tells users up front that Repair Tracker will ask for
+        // administrator approval (the app itself always runs unelevated).
+        SendMessageW(self->repair,BCM_SETSHIELD,0,TRUE);
+        // Dark theming: DarkMode_Explorer covers buttons and scrollbars,
+        // DarkMode_CFD the combo; checkboxes and the trackbar fall back to
+        // classic rendering so the WM_CTLCOLOR palette below applies to them.
+        for(auto h:{self->refresh,self->repair,self->recenter,self->list,self->details})SetWindowTheme(h,L"DarkMode_Explorer",nullptr);
+        SetWindowTheme(self->mapping,L"DarkMode_CFD",nullptr);
+        for(auto h:{self->invertX,self->invertY,self->invertZ,self->showAll,self->smoothing})SetWindowTheme(h,L" ",L" ");
+        for(auto h:{self->refresh,self->repair,self->recenter,self->list,self->details,self->raw,self->stats,self->motion,self->mapping,self->invertX,self->invertY,self->invertZ,self->smoothing,self->showAll})SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(self->font),TRUE);
+        self->udpPort=4242;self->udp.open("127.0.0.1",self->udpPort);
         RegisterHotKey(hwnd,1,MOD_CONTROL|MOD_ALT,'C');SetTimer(hwnd,1,2000,nullptr);self->enumerate();return 0;}
     case WM_SIZE:self->layout();return 0;case WM_PAINT:self->paint();return 0;
+    case WM_GETMINMAXINFO:{auto* info=reinterpret_cast<MINMAXINFO*>(lp);info->ptMinTrackSize={1020,760};return 0;}
     case WM_ERASEBKGND:return 1; // the double-buffered WM_PAINT owns the surface; skip the erase that caused flicker
-    case WM_CTLCOLORSTATIC:{auto dc=reinterpret_cast<HDC>(wp);const bool muted=reinterpret_cast<HWND>(lp)==self->ports;SetBkColor(dc,Window::kWindowBg);SetTextColor(dc,muted?Window::kMuted:Window::kText);return reinterpret_cast<LRESULT>(self->background);}
+    case WM_CTLCOLORSTATIC:{auto dc=reinterpret_cast<HDC>(wp);SetBkColor(dc,Window::kWindowBg);SetTextColor(dc,Window::kText);return reinterpret_cast<LRESULT>(self->background);}
     case WM_CTLCOLORBTN:{auto dc=reinterpret_cast<HDC>(wp);SetBkColor(dc,Window::kWindowBg);SetTextColor(dc,Window::kText);return reinterpret_cast<LRESULT>(self->background);}
     case WM_CTLCOLOREDIT:case WM_CTLCOLORLISTBOX:{auto dc=reinterpret_cast<HDC>(wp);SetBkColor(dc,Window::kPanelBg);SetTextColor(dc,Window::kText);return reinterpret_cast<LRESULT>(self->panel);}
-    case WM_COMMAND:if(LOWORD(wp)==kRefresh){self->enumerate();return 0;}if(LOWORD(wp)==kRepair){wchar_t executable[MAX_PATH]{};GetModuleFileNameW(nullptr,executable,MAX_PATH);const auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd,L"open",executable,L"repair",nullptr,SW_SHOWNORMAL));if(result>32){SetWindowTextW(self->stats,L"Repair started. Approve the Windows prompt; this window will reopen automatically.");PostMessageW(hwnd,WM_CLOSE,0,0);}else MessageBoxW(hwnd,L"Could not start the repair command.",L"Head Tracker Bridge",MB_OK|MB_ICONERROR);return 0;}if(LOWORD(wp)==kRecenter){self->filter.recenter();return 0;}if(LOWORD(wp)==kDeviceList&&HIWORD(wp)==LBN_SELCHANGE){self->showDetails(static_cast<int>(SendMessageW(self->list,LB_GETCURSEL,0,0)));return 0;}if(reinterpret_cast<HWND>(lp)==self->mapping||reinterpret_cast<HWND>(lp)==self->invertX||reinterpret_cast<HWND>(lp)==self->invertY||reinterpret_cast<HWND>(lp)==self->invertZ){self->applyControls();return 0;}break;
+    case WM_COMMAND:if(LOWORD(wp)==kRefresh){self->enumerate();return 0;}if(LOWORD(wp)==kRepair){wchar_t executable[MAX_PATH]{};GetModuleFileNameW(nullptr,executable,MAX_PATH);const auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd,L"open",executable,L"repair",nullptr,SW_SHOWNORMAL));if(result>32){SetWindowTextW(self->stats,L"Repair started. Approve the Windows prompt; this window will reopen automatically.");PostMessageW(hwnd,WM_CLOSE,0,0);}else MessageBoxW(hwnd,L"Could not start the repair command.",L"Head Tracker Bridge",MB_OK|MB_ICONERROR);return 0;}if(LOWORD(wp)==kRecenter){self->filter.recenter();return 0;}if(LOWORD(wp)==kShowAll){self->rebuildList();self->showDetails(0);return 0;}if(LOWORD(wp)==kDeviceList&&HIWORD(wp)==LBN_SELCHANGE){self->showDetails(static_cast<int>(SendMessageW(self->list,LB_GETCURSEL,0,0)));return 0;}if(reinterpret_cast<HWND>(lp)==self->mapping||reinterpret_cast<HWND>(lp)==self->invertX||reinterpret_cast<HWND>(lp)==self->invertY||reinterpret_cast<HWND>(lp)==self->invertZ){self->applyControls();return 0;}break;
     case WM_HSCROLL:if(reinterpret_cast<HWND>(lp)==self->smoothing){self->applyControls();return 0;}break;
     case WM_HOTKEY:self->filter.recenter();return 0;
     case WM_TIMER:if(!self->hid.connected()&&!self->sensors.connected()&&!self->connected){self->enumerate();}else if(!self->hid.connected()&&!self->sensors.connected()){self->connected=false;self->enumerate();}return 0;
@@ -1467,7 +1617,10 @@ int runGui(HINSTANCE instance,int showCommand){
 #ifdef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 #endif
-    INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_STANDARD_CLASSES};InitCommonControlsEx(&controls);Window state;state.instance=instance;WNDCLASSEXW wc{sizeof(wc)};wc.style=CS_HREDRAW|CS_VREDRAW;wc.lpfnWndProc=proc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.lpszClassName=L"XM5HeadTrackerBridgeWindow";RegisterClassExW(&wc);const auto title=std::format(L"Head Tracker Bridge {}",kVersion);auto hwnd=CreateWindowExW(0,wc.lpszClassName,title.c_str(),WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,1100,760,nullptr,nullptr,instance,&state);if(!hwnd)return 1;ShowWindow(hwnd,showCommand);UpdateWindow(hwnd);MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return static_cast<int>(msg.wParam);}
+    INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_STANDARD_CLASSES};InitCommonControlsEx(&controls);Window state;state.instance=instance;WNDCLASSEXW wc{sizeof(wc)};wc.style=CS_HREDRAW|CS_VREDRAW;wc.lpfnWndProc=proc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.lpszClassName=L"XM5HeadTrackerBridgeWindow";
+    wc.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(1));if(!wc.hIcon)wc.hIcon=LoadIconW(nullptr,IDI_APPLICATION);
+    wc.hIconSm=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(1),IMAGE_ICON,16,16,LR_DEFAULTCOLOR));
+    RegisterClassExW(&wc);const auto title=std::format(L"Head Tracker Bridge {}",kVersion);auto hwnd=CreateWindowExW(0,wc.lpszClassName,title.c_str(),WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,1160,860,nullptr,nullptr,instance,&state);if(!hwnd)return 1;ShowWindow(hwnd,showCommand);UpdateWindow(hwnd);MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return static_cast<int>(msg.wParam);}
 } // namespace xm5
 
 // =============================================================================
@@ -1482,6 +1635,13 @@ void console(){
     const auto out=GetStdHandle(STD_OUTPUT_HANDLE),err=GetStdHandle(STD_ERROR_HANDLE);
     if(!out||out==INVALID_HANDLE_VALUE||GetFileType(out)==FILE_TYPE_CHAR)freopen_s(&ignored,"CONOUT$","w",stdout);
     if(!err||err==INVALID_HANDLE_VALUE||GetFileType(err)==FILE_TYPE_CHAR)freopen_s(&ignored,"CONOUT$","w",stderr);
+    // UTF-8 output mode: device names can contain non-ANSI characters (AirPods
+    // default to a curly apostrophe, e.g. "Nicholas's AirPods Pro"), and the
+    // default narrow translation poisons wcout at the first one, silently
+    // truncating everything after it.
+    SetConsoleOutputCP(CP_UTF8);
+    _setmode(_fileno(stdout),_O_U8TEXT);
+    _setmode(_fileno(stderr),_O_U8TEXT);
     SetConsoleCtrlHandler(consoleHandler,TRUE);
 }
 void printUsage(std::wostream& out){

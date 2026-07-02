@@ -1,0 +1,36 @@
+// Resources for the Head Tracker Bridge: application icon, side-by-side
+// manifest (Common Controls v6 + PerMonitorV2 DPI), and version info.
+// Compiled by build.cmd / CI with:  rc /nologo app.rc
+#include <winver.h>
+
+1 ICON "app.ico"
+1 24   "app.manifest"   // 24 = RT_MANIFEST (CREATEPROCESS_MANIFEST_RESOURCE_ID)
+
+1 VERSIONINFO
+FILEVERSION     1,2,0,0
+PRODUCTVERSION  1,2,0,0
+FILEFLAGSMASK   VS_FFI_FILEFLAGSMASK
+FILEFLAGS       0
+FILEOS          VOS_NT_WINDOWS32
+FILETYPE        VFT_APP
+FILESUBTYPE     VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName",      "Nicholas Slattery and contributors"
+            VALUE "FileDescription",  "Head Tracker Bridge - Android Head Tracker headsets to UDP"
+            VALUE "FileVersion",      "1.2.0"
+            VALUE "InternalName",     "xm5-headtracker"
+            VALUE "LegalCopyright",   "MIT License - (c) 2026 Nicholas Slattery and contributors"
+            VALUE "OriginalFilename", "xm5-headtracker.exe"
+            VALUE "ProductName",      "Head Tracker Bridge"
+            VALUE "ProductVersion",   "1.2.0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

@@ -1,6 +1,7 @@
 # Build output
 *.exe
 *.obj
+*.res
 *.pdb
 *.ilk
 *.exp
