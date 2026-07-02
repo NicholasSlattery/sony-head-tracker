@@ -49,6 +49,7 @@ administrator prompt — that's what it's for.
 ## Contents
 
 - [Quick start](#quick-start)
+- [Compatibility](#compatibility)
 - [Where the data goes (ports)](#where-the-data-goes-ports)
 - [Gyroscope and accelerometer](#gyroscope-and-accelerometer)
 - [Default orientation](#default-orientation-yxz-x-and-z-inverted)
@@ -61,6 +62,38 @@ administrator prompt — that's what it's for.
 - [Protocol & security notes](#protocol--security-notes)
 - [Contributing](#contributing)
 - [License](#license)
+
+## Compatibility
+
+This bridge doesn't care about the brand or model name — it detects **any**
+headset that exposes the standard
+[Android Head Tracker HID sensor](https://source.android.com/docs/core/interaction/sensors/head-tracker-hid-protocol)
+over Bluetooth (usage `0x0020:0x00E1` with an `#AndroidHeadTracker#` marker). So
+whether a given pair works comes down to one thing: does that headset advertise
+the sensor to Windows?
+
+**You can check in seconds, with zero risk.** Pair the headphones, then run:
+
+```bat
+xm5-headtracker.exe probe
+```
+
+`probe` is read-only — it never writes to the device, changes drivers, or
+touches firmware. If it finds a verified Android head tracker it prints the
+descriptor and exits `0`; if not, it just lists what it saw and exits `2`.
+
+| Headset | Head tracking | Reported by |
+| ------- | ------------- | ----------- |
+| Sony WH-1000XM5 | ✅ Works | maintainer (tested) |
+| Sony WH-1000XM4 | ❓ Untested | — |
+| Sony WH-1000XM3 | ❓ Untested (likely no sensor) | — |
+| Other (Bose, etc.) | ❓ Untested | — |
+
+Sony added head-tracked spatial audio on the newer models, so those are the
+likely candidates; older headsets probably don't carry the sensor at all. If
+you run `probe` on anything not listed above, please
+[open an issue](https://github.com/NicholasSlattery/xm5-head-tracker/issues/new/choose)
+with the output — working or not — and I'll add it to this table.
 
 ## Where the data goes (ports)
 
