@@ -87,17 +87,36 @@ descriptor and exits `0`; if not, it just lists what it saw and exits `2`.
 
 | Headset | Head tracking | Reported by |
 | ------- | ------------- | ----------- |
-| Sony WH-1000XM5 | ✅ Works | maintainer (tested) |
-| Sony WH-1000XM4 | ❓ Untested | — |
-| Sony WH-1000XM3 | ❓ Untested (likely no sensor) | — |
+| Sony WH-1000XM5 \* | ✅ Works | maintainer (tested) |
+| Sony WH-1000XM6 | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony WF-1000XM6 | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony WF-1000XM5 | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony LinkBuds Open (WF-L910) | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony LinkBuds Fit (WF-LS910N) | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony ULT WEAR (WH-ULT900N) | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony LinkBuds (WF-L900) \* | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony LinkBuds S (WF-LS900N) \* | ❓ Untested — likely | Sony lists head-tracking support |
+| Sony WH-1000XM4 | ❌ Unlikely | not on Sony's head-tracking list |
+| Sony WH-1000XM3 | ❌ Unlikely | not on Sony's head-tracking list |
+| Bose QuietComfort Ultra Headphones | ❓ Untested — possibly in the future | has head-tracked spatial audio |
+| Bose QuietComfort Ultra Earbuds | ❓ Untested — possibly in the future | has head-tracked spatial audio |
+| Other Bose models | ❌ Unlikely | no head-tracked spatial audio |
 | Apple AirPods (all models, incl. AirPods Pro) | ❌ Not possible on Windows | see below |
-| Other (Bose, etc.) | ❓ Untested | — |
 
-Sony added head-tracked spatial audio on the newer models, so those are the
-likely candidates; older headsets probably don't carry the sensor at all. If
-you run `probe` on anything not listed above, please
+\* These models need the latest firmware first: install Sony's **Sound Connect**
+app, connect the headphones, and update before probing.
+
+Sony's own documentation lists the models above as supporting its head-tracking
+feature, and the WH-1000XM5 — the one model from that list tested so far —
+exposes the sensor to Windows through the standard Android Head Tracker
+protocol. The untested Sony models are therefore likely to work (possibly not
+today on current firmware, but very likely as firmware catches up); models not
+on Sony's list almost certainly carry no usable sensor. The Bose QuietComfort
+Ultra pair do head-tracked spatial audio, so they may eventually expose the
+same protocol, but that is unverified; other Bose models are unlikely. If you
+run `probe` on anything listed as untested, please
 [open an issue](https://github.com/NicholasSlattery/xm5-head-tracker/issues/new/choose)
-with the output — working or not — and I'll add it to this table.
+with the output — working or not — and I'll update this table.
 
 ### Why AirPods can't work (yet)
 
