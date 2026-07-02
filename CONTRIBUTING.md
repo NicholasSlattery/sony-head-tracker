@@ -22,10 +22,10 @@ build.cmd
 or, from a *x64 Native Tools Command Prompt for VS*:
 
 ```bat
-cl /std:c++latest /EHsc /permissive- /utf-8 /O2 /W3 /DUNICODE /D_UNICODE xm5_head_tracker.cpp /Fe:xm5-headtracker.exe
+cl /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE xm5_head_tracker.cpp /Fe:xm5-headtracker.exe
 ```
 
-The build must be **warning-clean at `/W3`**. CI compiles every push on
+The build must be **warning-clean at `/W4`**. CI compiles every push on
 `windows-latest`; please make sure your change builds there too.
 
 ## Project layout

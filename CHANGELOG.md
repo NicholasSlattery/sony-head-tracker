@@ -6,7 +6,15 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.0.0] - 2026-07-01
+
 ### Added
+- `help` and `version` commands (with `--help` / `--version` aliases); unknown
+  commands now print the full usage text, and the GUI title bar shows the
+  project version.
+- Tagged releases: pushing a `v*` tag builds `xm5-headtracker.exe` in CI and
+  attaches it to a GitHub Release automatically.
+- `bridge --port` is validated (1–65534, since the JSON stream uses port + 1).
 - **Accelerometer exposure.** Input reports are parsed for the standard HID
   sensor-page acceleration usages (`0x0452`–`0x0455`); when present they are
   emitted as the JSON `accelerometer` array and shown live in the GUI.
@@ -26,6 +34,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   The angles are now sent in the correct last three slots.
 
 ### Changed
+- Builds are now warning-clean at **`/W4`** (previously `/W3`); `build.cmd`, CI,
+  and the docs all use the stricter level.
 - Default axis convention is now **YXZ with X and Z inverted** (previously Z
   only); the GUI's Invert X and Invert Z checkboxes both start checked.
 - **GUI no longer flickers.** The live graph is now double-buffered, the window
@@ -43,5 +53,6 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   filtering with recenter and drift correction, OpenTrack + JSON UDP output,
   diagnostics GUI, and one-click driver-only "Repair Tracker" recovery.
 
-[Unreleased]: https://github.com/OWNER/xm5-head-tracker/compare/v0.1.0...HEAD
-[0.1.0]: https://github.com/OWNER/xm5-head-tracker/releases/tag/v0.1.0
+[Unreleased]: https://github.com/NicholasSlattery/xm5-head-tracker/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/NicholasSlattery/xm5-head-tracker/compare/v0.1.0...v1.0.0
+[0.1.0]: https://github.com/NicholasSlattery/xm5-head-tracker/releases/tag/v0.1.0

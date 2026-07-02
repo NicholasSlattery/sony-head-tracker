@@ -24,7 +24,7 @@
 // checked).
 //
 // BUILD (Developer PowerShell / x64 Native Tools Command Prompt for VS):
-//   cl /std:c++latest /EHsc /permissive- /utf-8 /O2 /W3 ^
+//   cl /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 ^
 //      /DUNICODE /D_UNICODE xm5_head_tracker.cpp /Fe:xm5-headtracker.exe
 // (All required import libraries are pulled in via #pragma comment below, so no
 //  extra linker arguments are needed. Requires a C++20-capable MSVC and a current
@@ -40,6 +40,7 @@
 //   xm5-headtracker.exe bluetooth-generic-hid           (run elevated)
 //   xm5-headtracker.exe bridge [--port 4242] [--seconds N]
 //                              [--axis-map YXZ] [--invert XZ] [--smoothing 0.18]
+//   xm5-headtracker.exe help | version
 //
 // The bridge sends six native little-endian doubles in OpenTrack pose order
 // (x, y, z, yaw, pitch, roll) to the chosen UDP port, and a UTF-8 JSON object to
@@ -50,7 +51,7 @@
 // -----------------------------------------------------------------------------
 // MIT License
 //
-// Copyright (c) 2026 XM5 Head Tracker Bridge contributors
+// Copyright (c) 2026 Nicholas Slattery and the XM5 Head Tracker Bridge contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -150,6 +151,9 @@ using Microsoft::WRL::ComPtr;
 //  Core types
 // =============================================================================
 namespace xm5 {
+
+// Project version -- keep in sync with CHANGELOG.md and release tags.
+inline constexpr std::wstring_view kVersion = L"1.0.0";
 
 struct Vec3 {
     double x{};
@@ -1345,7 +1349,7 @@ int runGui(HINSTANCE instance,int showCommand){
 #ifdef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 #endif
-    INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_STANDARD_CLASSES};InitCommonControlsEx(&controls);Window state;state.instance=instance;WNDCLASSEXW wc{sizeof(wc)};wc.style=CS_HREDRAW|CS_VREDRAW;wc.lpfnWndProc=proc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.lpszClassName=L"XM5HeadTrackerBridgeWindow";RegisterClassExW(&wc);auto hwnd=CreateWindowExW(0,wc.lpszClassName,L"XM5 Head Tracker Bridge",WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,1100,760,nullptr,nullptr,instance,&state);if(!hwnd)return 1;ShowWindow(hwnd,showCommand);UpdateWindow(hwnd);MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return static_cast<int>(msg.wParam);}
+    INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_STANDARD_CLASSES};InitCommonControlsEx(&controls);Window state;state.instance=instance;WNDCLASSEXW wc{sizeof(wc)};wc.style=CS_HREDRAW|CS_VREDRAW;wc.lpfnWndProc=proc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.lpszClassName=L"XM5HeadTrackerBridgeWindow";RegisterClassExW(&wc);const auto title=std::format(L"XM5 Head Tracker Bridge {}",kVersion);auto hwnd=CreateWindowExW(0,wc.lpszClassName,title.c_str(),WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,1100,760,nullptr,nullptr,instance,&state);if(!hwnd)return 1;ShowWindow(hwnd,showCommand);UpdateWindow(hwnd);MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return static_cast<int>(msg.wParam);}
 } // namespace xm5
 
 // =============================================================================
@@ -1361,6 +1365,23 @@ void console(){
     if(!out||out==INVALID_HANDLE_VALUE||GetFileType(out)==FILE_TYPE_CHAR)freopen_s(&ignored,"CONOUT$","w",stdout);
     if(!err||err==INVALID_HANDLE_VALUE||GetFileType(err)==FILE_TYPE_CHAR)freopen_s(&ignored,"CONOUT$","w",stderr);
     SetConsoleCtrlHandler(consoleHandler,TRUE);
+}
+void printUsage(std::wostream& out){
+    out<<L"XM5 Head Tracker Bridge "<<xm5::kVersion<<L"\n"
+       <<L"Streams the Sony WH-1000XM5's head-tracking sensor over UDP (OpenTrack + JSON).\n\n"
+       <<L"Usage:\n"
+       <<L"  xm5-headtracker.exe                       diagnostics GUI (default)\n"
+       <<L"  xm5-headtracker.exe bridge [--port 4242] [--seconds N]\n"
+       <<L"                             [--axis-map YXZ] [--invert XZ] [--smoothing 0.18]\n"
+       <<L"  xm5-headtracker.exe probe [--include-disabled]\n"
+       <<L"  xm5-headtracker.exe dump [--seconds N]\n"
+       <<L"  xm5-headtracker.exe repair\n"
+       <<L"  xm5-headtracker.exe bluetooth-probe [--all-le] [--name \"WH-1000XM5\"]\n"
+       <<L"  xm5-headtracker.exe bluetooth-rebind [--name \"WH-1000XM5\"]\n"
+       <<L"  xm5-headtracker.exe bluetooth-generic-hid   (run from an elevated prompt)\n"
+       <<L"  xm5-headtracker.exe help | version\n\n"
+       <<L"bridge sends six little-endian doubles (x, y, z, yaw, pitch, roll) to UDP\n"
+       <<L"127.0.0.1:<port> and a JSON datagram to <port>+1. Loopback only; unauthenticated.\n";
 }
 void printDevice(const xm5::DeviceInfo& d){std::wcout<<std::format(L"HID {}\n  {} {}\n  usage 0x{:04X}:0x{:04X}, VID/PID {:04X}:{:04X}, reports input={} feature={}\n  description: {}\n  verified Android tracker: {}\n",d.instanceId,d.manufacturer,d.product,d.usagePage,d.usage,d.vendorId,d.productId,d.inputReportBytes,d.featureReportBytes,std::wstring(d.sensorDescription.begin(),d.sensorDescription.end()),d.androidHeadTracker?L"yes":L"no");for(const auto& f:d.fields)std::wcout<<std::format(L"    {} id={} {:04X}:{:04X} count={} bits={} logical={}..{} physical={}..{} exp={}\n",f.feature?L"feature":L"input",f.reportId,f.usagePage,f.usage,f.reportCount,f.bitSize,f.logicalMin,f.logicalMax,f.physicalMin,f.physicalMax,f.unitExponent);}
 
@@ -1390,6 +1411,8 @@ int runRepair(bool launchGui){
 }
 
 int wmain(int argc,wchar_t** argv){const std::wstring command=argc>1?argv[1]:L"gui";if(command==L"gui"){FreeConsole();return xm5::runGui(GetModuleHandleW(nullptr),SW_SHOWDEFAULT);}if(command==L"repair"){bool launch=true;for(int i=2;i<argc;++i)if(std::wstring_view(argv[i])==L"--no-launch")launch=false;return runRepair(launch);}console();
+    if(command==L"version"||command==L"--version"||command==L"-v"){std::wcout<<L"xm5-headtracker "<<xm5::kVersion<<L'\n';return 0;}
+    if(command==L"help"||command==L"--help"||command==L"-h"||command==L"/?"){printUsage(std::wcout);return 0;}
     xm5::Logger::instance().setSink([](xm5::LogLevel,const std::wstring& line){std::wcerr<<line<<L'\n';});
     if(command==L"bluetooth-probe"){xm5::BluetoothProbeOptions options;std::wstring name=L"WH-1000XM5";for(int i=2;i<argc;++i){const std::wstring_view option=argv[i];if(option==L"--all-le")options.probeAllLeDevices=true;else if(option==L"--name"&&i+1<argc)name=argv[++i];}options.nameFilter=name;return xm5::runBluetoothProbe(options,std::wcout);}
     if(command==L"bluetooth-rebind"){std::wstring name=L"WH-1000XM5";for(int i=2;i+1<argc;++i)if(std::wstring_view(argv[i])==L"--name")name=argv[++i];return xm5::rebindBluetoothHid(name,std::wcout);}
@@ -1404,7 +1427,7 @@ int wmain(int argc,wchar_t** argv){const std::wstring command=argc>1?argv[1]:L"g
         std::uint16_t port=4242;unsigned seconds{};xm5::FilterConfig config;
         for(int i=2;i<argc;++i){
             const std::wstring_view option=argv[i];
-            if(option==L"--port"&&i+1<argc)port=static_cast<std::uint16_t>(std::wcstoul(argv[++i],nullptr,10));
+            if(option==L"--port"&&i+1<argc){const auto value=std::wcstoul(argv[++i],nullptr,10);if(value<1||value>65534){std::wcerr<<L"--port must be between 1 and 65534 (the JSON stream uses port+1)\n";return 1;}port=static_cast<std::uint16_t>(value);}
             else if(option==L"--seconds"&&i+1<argc)seconds=std::wcstoul(argv[++i],nullptr,10);
             else if(option==L"--smoothing"&&i+1<argc)config.smoothing=std::clamp(std::wcstod(argv[++i],nullptr),0.01,1.0);
             else if(option==L"--invert"&&i+1<argc){const std::wstring axes=argv[++i];config.axes.sign={1.0,1.0,1.0};for(const auto axis:axes){if(axis==L'x'||axis==L'X')config.axes.sign[0]=-1;if(axis==L'y'||axis==L'Y')config.axes.sign[1]=-1;if(axis==L'z'||axis==L'Z')config.axes.sign[2]=-1;}}
@@ -1419,5 +1442,5 @@ int wmain(int argc,wchar_t** argv){const std::wstring command=argc>1?argv[1]:L"g
         const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(seconds);while(!stopRequested&&(!seconds||std::chrono::steady_clock::now()<deadline)){if(!hid.connected()&&!sensor.connected()){std::wcerr<<L"\nDisconnected; probing for reconnection…\n";std::this_thread::sleep_for(std::chrono::seconds(2));devices=hid.enumerate();sensors=sensor.enumerate();selected=std::find_if(devices.begin(),devices.end(),[](const auto& d){return d.androidHeadTracker;});selectedSensor=std::find_if(sensors.begin(),sensors.end(),[](const auto& s){return s.androidHeadTracker;});connect();}std::this_thread::sleep_for(std::chrono::milliseconds(100));}
         hid.disconnect();sensor.disconnect();return 0;
     }
-    std::wcerr<<L"Usage: xm5-headtracker.exe [repair|probe|dump|bluetooth-probe [--all-le]|bluetooth-rebind|bluetooth-generic-hid|bridge --port 4242 [--axis-map YXZ] [--invert XZ] [--smoothing 0.18]]\n";return 1;
+    std::wcerr<<L"Unknown command '"<<command<<L"'.\n\n";printUsage(std::wcerr);return 1;
 }

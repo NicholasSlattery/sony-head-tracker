@@ -17,3 +17,4 @@ CMakeSettings.json
 
 # Local tooling
 .claude/
+*.log

@@ -43,8 +43,9 @@ One UTF-8 JSON object per sample, no trailing newline. `version` is currently
 | `packetsPerSecond` | number              | Measured input report rate.                                |
 | `receiveLatencyMs` | number              | Device-timestamp latency, or `-1` when unavailable.        |
 
-All vector fields share the configured axis convention (default **YXZ, Z
-inverted**); the gyroscope and accelerometer are remapped to match orientation.
+All vector fields share the configured axis convention (default **YXZ order
+with the X and Z axes inverted**); the gyroscope and accelerometer are remapped
+to match orientation.
 
 ### Example
 

@@ -2,21 +2,44 @@
 
 Head tracking on the **Sony WH-1000XM5**, on Windows, in a single C++ file.
 
-[![Build](https://github.com/OWNER/xm5-head-tracker/actions/workflows/build.yml/badge.svg)](https://github.com/OWNER/xm5-head-tracker/actions/workflows/build.yml)
+[![Build](https://github.com/NicholasSlattery/xm5-head-tracker/actions/workflows/build.yml/badge.svg)](https://github.com/NicholasSlattery/xm5-head-tracker/actions/workflows/build.yml)
+[![Latest release](https://img.shields.io/github/v/release/NicholasSlattery/xm5-head-tracker)](https://github.com/NicholasSlattery/xm5-head-tracker/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform: Windows 11](https://img.shields.io/badge/platform-Windows%2011-0078D6.svg)](#build)
 [![Language: C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg)](#build)
 
-The XM5 exposes an [Android Head Tracker HID sensor](https://source.android.com/docs/core/interaction/sensors/head-tracker-hid-protocol)
-over Bluetooth. This program discovers that sensor, enables reporting, parses
-the headset's orientation, and streams it out over UDP — as
+Your WH-1000XM5 has a full motion sensor in it — Sony uses it for head-tracked
+spatial audio on phones, and the headset exposes it over Bluetooth as an
+[Android Head Tracker HID sensor](https://source.android.com/docs/core/interaction/sensors/head-tracker-hid-protocol).
+On a Windows PC that data just sits there: no Sony software reads it, no
+Windows API surfaces it, and (as far as I can find) no other tool exists for
+it. **This bridge is how you get live head-tracking data out of a WH-1000XM5
+on Windows.**
+
+It discovers the sensor, enables reporting, parses the headset's orientation,
+and streams it out over UDP — as
 [OpenTrack](https://github.com/opentrack/opentrack) doubles **and** a JSON
-datagram — so you can drive spatial audio, sim/game head-look, or anything else
+datagram — so you can drive sim/game head-look, spatial audio, or anything else
 that wants to know where your head is pointing. It also ships a flicker-free
 diagnostics GUI with a live yaw/pitch/roll graph and a one-click **Repair
 Tracker** button for the times Windows refuses to enumerate the sensor.
 
 Everything is in one file: [`xm5_head_tracker.cpp`](xm5_head_tracker.cpp).
+
+## Quick start
+
+1. Grab `xm5-headtracker.exe` from the
+   [latest release](https://github.com/NicholasSlattery/xm5-head-tracker/releases/latest)
+   (or [build it yourself](#build) — it's one `cl` command).
+2. [Pair the headphones](#pair-the-headphones) in Windows 11.
+3. Double-click the exe. The GUI finds the tracker, draws your head's live
+   yaw/pitch/roll, and is already streaming to UDP `4242`/`4243`.
+4. For games: point OpenTrack's "UDP over network" input at port `4242` — see
+   [OpenTrack](#opentrack). For your own code: read one JSON object per sample
+   from port `4243` — see [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
+
+If the sensor doesn't show up, press **Repair Tracker** once and approve the
+administrator prompt — that's what it's for.
 
 > **Hardware status:** changing orientation reports have been received and parsed
 > from a physical WH-1000XM5. Behaviour varies with Sony firmware and the Windows
@@ -25,9 +48,10 @@ Everything is in one file: [`xm5_head_tracker.cpp`](xm5_head_tracker.cpp).
 
 ## Contents
 
+- [Quick start](#quick-start)
 - [Where the data goes (ports)](#where-the-data-goes-ports)
 - [Gyroscope and accelerometer](#gyroscope-and-accelerometer)
-- [Default orientation](#default-orientation-yxz-z-inverted)
+- [Default orientation](#default-orientation-yxz-x-and-z-inverted)
 - [Build](#build)
 - [Pair the headphones](#pair-the-headphones)
 - [Usage](#usage)
@@ -121,12 +145,14 @@ build.cmd
 from a *x64 Native Tools Command Prompt for VS*:
 
 ```bat
-cl /std:c++latest /EHsc /permissive- /utf-8 /O2 /W3 /DUNICODE /D_UNICODE xm5_head_tracker.cpp /Fe:xm5-headtracker.exe
+cl /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE xm5_head_tracker.cpp /Fe:xm5-headtracker.exe
 ```
 
 All required import libraries are pulled in via `#pragma comment(lib, ...)`, so
-no extra linker arguments are needed. Every push is built in CI on
-`windows-latest` — see [`.github/workflows/build.yml`](.github/workflows/build.yml).
+no extra linker arguments are needed. The build is warning-clean at `/W4`.
+Every push is built in CI on `windows-latest`, and pushing a `v*` tag publishes
+the exe as a GitHub Release — see
+[`.github/workflows/build.yml`](.github/workflows/build.yml).
 
 ## Pair the headphones
 
@@ -149,6 +175,7 @@ xm5-headtracker.exe bluetooth-rebind [--name "WH-1000XM5"]
 xm5-headtracker.exe bluetooth-generic-hid        (run from an elevated prompt)
 xm5-headtracker.exe bridge [--port 4242] [--seconds N]
                            [--axis-map YXZ] [--invert XZ] [--smoothing 0.18]
+xm5-headtracker.exe help | version
 ```
 
 - **`bridge`** is the main mode. It reconnects automatically and streams to the
