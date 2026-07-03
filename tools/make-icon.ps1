@@ -1,4 +1,4 @@
-# Generates app.ico for the Head Tracker Bridge (Windows PowerShell 5.1+, no
+# Generates app.ico for Sony Head Tracker for Windows (Windows PowerShell 5.1+, no
 # external tools). Draws a 256x256 master -- headphones with a tracking dot on a
 # dark rounded square -- then scales it to every standard icon size and packs a
 # multi-image .ico with PNG-compressed entries.

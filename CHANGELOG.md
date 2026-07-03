@@ -6,9 +6,30 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.3.0] - 2026-07-02
+
 ### Changed
-- Compatibility table: **WF-1000XM6** confirmed working (community); **WH-1000XM4**
+- **Rebranded to "Sony Head Tracker for Windows."** The project began as an
+  experiment with the WH-1000XM5; community testing confirmed that the same
+  Android Head Tracker protocol is shared by other Sony devices, so the project
+  is now a general Sony head-tracking bridge for Windows. Renamed the executable
+  (`sony-head-tracker.exe`), the source file (`sony_head_tracker.cpp`), the
+  internal namespace (`sony`), the window class, the GUI title, and the version
+  resources (product name, file description, manifest identity). The
+  `XM5 Head Tracker Bridge` name is retained in this changelog as history.
+- **README rewritten to be Sony-generic.** New identity and positioning, a
+  compatibility model based on the exposed protocol (Confirmed / Community
+  confirmed / Candidate / Not compatible) rather than the model name, quick-start
+  guidance that emphasises pressing **Repair Tracker** on a fresh boot, and
+  preserved WH-1000XM5 search phrases so existing links still land.
+- Compatibility: **WF-1000XM6** confirmed working (community); **WH-1000XM4**
   confirmed *not* working (community).
+
+### Added
+- **Labelled smoothing slider.** The orientation-smoothing trackbar in the GUI
+  toolbar now carries a visible **Smoothing** caption so its purpose is clear.
+- **"Unofficial" tag in the GUI header** (and the CLI banner), making clear the
+  project is not affiliated with or endorsed by Sony.
 
 ## [1.2.0] - 2026-07-02
 
@@ -115,8 +136,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   filtering with recenter and drift correction, OpenTrack + JSON UDP output,
   diagnostics GUI, and one-click driver-only "Repair Tracker" recovery.
 
-[Unreleased]: https://github.com/NicholasSlattery/xm5-head-tracker/compare/v1.2.0...HEAD
-[1.2.0]: https://github.com/NicholasSlattery/xm5-head-tracker/compare/v1.1.0...v1.2.0
-[1.1.0]: https://github.com/NicholasSlattery/xm5-head-tracker/compare/v1.0.0...v1.1.0
-[1.0.0]: https://github.com/NicholasSlattery/xm5-head-tracker/compare/v0.1.0...v1.0.0
-[0.1.0]: https://github.com/NicholasSlattery/xm5-head-tracker/releases/tag/v0.1.0
+[Unreleased]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v1.3.0...HEAD
+[1.3.0]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v1.2.0...v1.3.0
+[1.2.0]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v1.1.0...v1.2.0
+[1.1.0]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v1.0.0...v1.1.0
+[1.0.0]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v0.1.0...v1.0.0
+[0.1.0]: https://github.com/NicholasSlattery/sony-head-tracker/releases/tag/v0.1.0
