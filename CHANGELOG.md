@@ -6,6 +6,51 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Fixed
+- **Windows Sensor API fallback no longer drops orientation-only devices.** The
+  fallback previously published a sample only when it received *both* a rotation
+  quaternion and three angular-velocity values. The protocol allows the gyroscope
+  to be `null`, so a device exposing orientation without angular velocity now
+  produces tracking (with `hasAngularVelocity = false`), matching the HID backend.
+
+### Changed
+- Compatibility: **WH-1000XM6** confirmed working (community); promoted from
+  Candidate to Confirmed in the README compatibility table.
+- **Refactored the single source file into modular units.** The code is now split
+  into a hardware-independent core (`include/sony_head_tracker/` + `src/`:
+  quaternion maths, HID descriptor decoding, the orientation filter, and protocol
+  serialisation) and a Windows platform layer (HID/Sensor backends, Bluetooth
+  repair, UDP output, GUI). Every backend produces a normalized `MotionSample`
+  (`std::optional` angular velocity / acceleration). The executable remains
+  dependency-free. No behaviour change to the CLI, GUI, or UDP/JSON output.
+- `Vec3::operator[]` is now bounds-checked (`assert`) instead of silently
+  returning `z` for out-of-range indices.
+
+### Added
+- **Persisted GUI settings.** Axis mapping, inversion, smoothing, UDP port,
+  "show all devices", and window placement are saved to
+  `%LOCALAPPDATA%\SonyHeadTracker\config.json` and restored on launch. A **Tools**
+  menu adds *Reset settings to defaults*, *Import configuration…*, and *Export
+  configuration…*, and the health line flags when a non-default axis mapping is active.
+- **Live connection-health readout** in the GUI: samples/second, time since last
+  packet, active backend, whether angular velocity is present, UDP packets sent and
+  destination port, reconnection attempts, and sensor data age.
+- **Automatic reconnection with back-off** (1, 2, 5, 10, 30 s) plus a **Reconnect
+  now** menu item; **Refresh** resets the back-off.
+- **Redacted diagnostics export.** *Tools → Export diagnostics…* in the GUI and a
+  new `sony-head-tracker.exe diagnostics` command produce a support bundle
+  (version, Windows build, backend, model, HID usage, descriptor, packet rate,
+  settings, recent log) with Bluetooth addresses, the Windows username, computer
+  name, and known device names removed.
+- **Unit tests for the pure core** (`tests/`, built and run by `build-tests.cmd`
+  and in CI): quaternion/Euler conversion, signed HID bitfield extraction,
+  recenter/smoothing/axis mapping, JSON serialisation, malformed/truncated or
+  angular-velocity-less input handling, config round-trip, and diagnostics redaction
+  — all without a headset.
+- **Compatibility-report issue form** (`.github/ISSUE_TEMPLATE/compatibility_report.yml`)
+  capturing model, firmware, Windows version, which path worked, probe output,
+  yaw/pitch/roll correctness, and table-inclusion consent.
+
 ## [1.3.0] - 2026-07-02
 
 ### Changed
