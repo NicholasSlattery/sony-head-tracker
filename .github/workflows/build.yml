@@ -86,7 +86,8 @@ jobs:
           $zip = "$stage.zip"
           Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
           $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
-          "$hash  $zip" | Out-File -Encoding ascii SHA256SUMS.txt
+          # Write LF (not CRLF) so `sha256sum -c` works cross-platform.
+          [System.IO.File]::WriteAllText((Join-Path $PWD 'SHA256SUMS.txt'), "$hash  $zip`n")
           Get-Content SHA256SUMS.txt
           "ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
 
