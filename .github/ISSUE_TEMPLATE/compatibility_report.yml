@@ -1,0 +1,89 @@
+name: Compatibility report
+description: Tell us whether Sony Head Tracker works with your headphones so we can grow the compatibility table.
+title: "[Compatibility] <model> — <works / partial / not working>"
+labels: ["compatibility"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for helping build the crowdsourced compatibility table! Please fill in as much as you can.
+        Run `sony-head-tracker.exe probe` first — its output is the single most useful thing you can share.
+
+  - type: input
+    id: model
+    attributes:
+      label: Exact headphone model
+      description: The precise model number, e.g. WH-1000XM5, WF-1000XM6, LinkBuds S.
+      placeholder: WH-1000XM5
+    validations:
+      required: true
+
+  - type: input
+    id: firmware
+    attributes:
+      label: Firmware version
+      description: Shown in the Sony Sound Connect / Headphones Connect app under the device's system settings.
+      placeholder: "2.3.1"
+    validations:
+      required: true
+
+  - type: input
+    id: windows
+    attributes:
+      label: Windows version
+      description: Run `winver`, or copy the edition and build (e.g. Windows 11 23H2, build 22631.4169).
+      placeholder: "Windows 11 23H2, build 22631"
+    validations:
+      required: true
+
+  - type: dropdown
+    id: working-path
+    attributes:
+      label: Which path produced motion tracking?
+      description: Select every path that produced live yaw/pitch/roll. See the README for what each one means.
+      multiple: true
+      options:
+        - Normal mode (HID, no repair needed)
+        - Repair mode (worked after Repair Tracker / `repair`)
+        - Windows Sensor API fallback
+        - None of them worked
+    validations:
+      required: true
+
+  - type: dropdown
+    id: axes-correct
+    attributes:
+      label: Did yaw, pitch, and roll behave correctly?
+      description: Correct means turning your head right moves yaw right, looking up moves pitch up, and tilting moves roll — without axes swapped or inverted before you configure remapping.
+      options:
+        - "Yes — all three axes correct out of the box"
+        - "Partly — some axes swapped or inverted (describe below)"
+        - "No — motion was wrong or erratic"
+        - "N/A — no motion at all"
+    validations:
+      required: true
+
+  - type: textarea
+    id: probe-output
+    attributes:
+      label: Probe output
+      description: Paste the full output of `sony-head-tracker.exe probe`. This is rendered as code automatically — no backticks needed.
+      render: text
+    validations:
+      required: true
+
+  - type: textarea
+    id: notes
+    attributes:
+      label: Anything else?
+      description: Axis-remapping settings you needed, repair steps, quirks, or details on partial/incorrect behaviour above.
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: consent
+    attributes:
+      label: Consent
+      options:
+        - label: I consent to this result being added to the project's public compatibility table.
+          required: true
