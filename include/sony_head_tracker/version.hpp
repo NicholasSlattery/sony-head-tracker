@@ -1,13 +1,14 @@
 // version.hpp
-// Single C++-side source of truth for the application version. The resource
-// script (app.rc) and manifest (app.manifest) still carry their own copies;
-// keeping those in sync from one place is tracked as a separate build task.
+// C++ view of the version. The value itself lives in version.h (the single
+// source shared with app.rc); this only exposes it as sony::kVersion.
 #pragma once
+
+#include "version.h"
 
 #include <string_view>
 
 namespace sony {
 
-inline constexpr std::wstring_view kVersion = L"1.3.0";
+inline constexpr std::wstring_view kVersion = SHT_VERSION_WSTRING;
 
 } // namespace sony

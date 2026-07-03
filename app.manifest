@@ -1,6 +1,8 @@
 <?xml version="1.0" encoding="UTF-8" standalone="yes"?>
 <assembly xmlns="urn:schemas-microsoft-com:asm.v1" manifestVersion="1.0">
-  <assemblyIdentity version="1.3.0.0" processorArchitecture="*" name="SonyHeadTracker" type="win32"/>
+  <!-- Assembly-identity version is intentionally static; it is not the product
+       version. The product/file version lives in version.h -> app.rc VERSIONINFO. -->
+  <assemblyIdentity version="1.0.0.0" processorArchitecture="*" name="SonyHeadTracker" type="win32"/>
   <description>Sony Head Tracker for Windows (unofficial)</description>
   <!-- Common Controls v6: themed buttons/scrollbars and the UAC shield on Repair Tracker. -->
   <dependency>

@@ -6,6 +6,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-07-03
+
 ### Fixed
 - **Windows Sensor API fallback no longer drops orientation-only devices.** The
   fallback previously published a sample only when it received *both* a rotation
@@ -25,6 +27,14 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   dependency-free. No behaviour change to the CLI, GUI, or UDP/JSON output.
 - `Vec3::operator[]` is now bounds-checked (`assert`) instead of silently
   returning `z` for out-of-range indices.
+- **Single source of truth for the version.** `include/sony_head_tracker/version.h`
+  feeds both the C++ code and the resource script (`app.rc`); the manifest's
+  assembly-identity version is intentionally static. CI fails a tagged build whose
+  executable version does not match the tag.
+- **Hardened CI.** All GitHub Actions are pinned to full commit SHAs (with
+  Dependabot keeping them updated), and the workflow is split into a least-privilege
+  build/test job (`contents: read`) and a release job (`contents: write`, only on
+  version tags).
 
 ### Added
 - **Persisted GUI settings.** Axis mapping, inversion, smoothing, UDP port,
@@ -50,6 +60,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 - **Compatibility-report issue form** (`.github/ISSUE_TEMPLATE/compatibility_report.yml`)
   capturing model, firmware, Windows version, which path worked, probe output,
   yaw/pitch/roll correctness, and table-inclusion consent.
+- **Signed, verifiable release packages.** Pushing a `vX.Y.Z` tag publishes
+  `sony-head-tracker-vX.Y.Z-windows-x64.zip` plus `SHA256SUMS.txt` (executable,
+  README, LICENSE, `docs/PROTOCOL.md`, and a sample OpenTrack profile), with a
+  GitHub build-provenance attestation so downloads can be verified.
 
 ## [1.3.0] - 2026-07-02
 

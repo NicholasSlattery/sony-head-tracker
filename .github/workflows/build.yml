@@ -7,19 +7,21 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Least privilege by default; the release job opts into more, and only on tags.
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   build:
-    name: MSVC (x64)
+    name: Build & test (MSVC x64)
     runs-on: windows-latest
-
+    permissions:
+      contents: read
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Set up MSVC developer command prompt
-        uses: ilammy/msvc-dev-cmd@v1
+        uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756 # v1
         with:
           arch: x64
 
@@ -36,15 +38,76 @@ jobs:
           if errorlevel 1 exit /b 1
 
       - name: Upload binary
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4
         with:
           name: sony-head-tracker
           path: sony-head-tracker.exe
           if-no-files-found: error
 
-      - name: Publish release
-        if: startsWith(github.ref, 'refs/tags/v')
-        uses: softprops/action-gh-release@v2
+  release:
+    name: Release
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/v')
+    runs-on: windows-latest
+    permissions:
+      contents: write        # create the GitHub Release and upload assets
+      id-token: write        # OIDC token for build-provenance attestation
+      attestations: write    # write the attestation
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Download built binary
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4
         with:
-          files: sony-head-tracker.exe
+          name: sony-head-tracker
+          path: dist-bin
+
+      - name: Verify the tag matches the executable version
+        shell: pwsh
+        run: |
+          $tagVersion = "${{ github.ref_name }}".TrimStart('v')
+          $out = (& .\dist-bin\sony-head-tracker.exe version) -join "`n"
+          if ($out -notmatch '(\d+\.\d+\.\d+)') { Write-Error "Could not read the executable version (output: $out)"; exit 1 }
+          $exeVersion = $Matches[1]
+          Write-Host "tag=$tagVersion  exe=$exeVersion"
+          if ($tagVersion -ne $exeVersion) {
+            Write-Error "Release tag ${{ github.ref_name }} does not match executable version $exeVersion. Bump include/sony_head_tracker/version.h."
+            exit 1
+          }
+
+      - name: Assemble release package
+        shell: pwsh
+        run: |
+          $ver = "${{ github.ref_name }}".TrimStart('v')
+          $stage = "sony-head-tracker-v$ver-windows-x64"
+          New-Item -ItemType Directory -Force -Path $stage | Out-Null
+          Copy-Item .\dist-bin\sony-head-tracker.exe $stage\
+          Copy-Item README.md, LICENSE, CHANGELOG.md, docs\PROTOCOL.md, extras\opentrack-sony-head-tracker.ini $stage\
+          $zip = "$stage.zip"
+          Compress-Archive -Path "$stage\*" -DestinationPath $zip -Force
+          $hash = (Get-FileHash $zip -Algorithm SHA256).Hash.ToLower()
+          "$hash  $zip" | Out-File -Encoding ascii SHA256SUMS.txt
+          Get-Content SHA256SUMS.txt
+          "ZIP=$zip" | Out-File -FilePath $env:GITHUB_ENV -Append
+
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@ef244123eb79f2f7a7e75d99086184180e6d0018 # v1
+        with:
+          subject-path: ${{ env.ZIP }}
+
+      - name: Publish release
+        uses: softprops/action-gh-release@3bb12739c298aeb8a4eeaf626c5b8d85266b0e65 # v2
+        with:
+          files: |
+            ${{ env.ZIP }}
+            SHA256SUMS.txt
+          fail_on_unmatched_files: true
           generate_release_notes: true
+          body: |
+            Windows x64 build of Sony Head Tracker (unofficial).
+
+            **Package** `${{ env.ZIP }}` — executable, README, LICENSE, `PROTOCOL.md`, and a sample OpenTrack profile.
+            **Verify** the download against `SHA256SUMS.txt`. The archive carries a signed build-provenance attestation:
+            `gh attestation verify ${{ env.ZIP }} --repo ${{ github.repository }}`
+
+            See [CHANGELOG.md](https://github.com/${{ github.repository }}/blob/${{ github.ref_name }}/CHANGELOG.md) for behaviour changes. Auto-generated commit notes follow.
