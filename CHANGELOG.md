@@ -6,6 +6,10 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Changed
+- Compatibility table: **WF-1000XM6** confirmed working (community); **WH-1000XM4**
+  confirmed *not* working (community).
+
 ## [1.2.0] - 2026-07-02
 
 ### Added
