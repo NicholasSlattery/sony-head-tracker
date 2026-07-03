@@ -1,5 +1,5 @@
 @echo off
-rem Build xm5-headtracker.exe from the single source file.
+rem Build sony-head-tracker.exe from the single source file.
 rem Run this from any normal Command Prompt -- it finds Visual Studio's C++ tools
 rem automatically. (Or run it from a "x64 Native Tools Command Prompt for VS".)
 setlocal
@@ -31,11 +31,11 @@ if not %errorlevel%==0 (
   echo Resource compile failed.
   exit /b 1
 )
-cl /nologo /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE xm5_head_tracker.cpp app.res /Fe:xm5-headtracker.exe
+cl /nologo /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE sony_head_tracker.cpp app.res /Fe:sony-head-tracker.exe
 if %errorlevel%==0 (
-  del /q xm5_head_tracker.obj app.res >nul 2>nul
+  del /q sony_head_tracker.obj app.res >nul 2>nul
   echo.
-  echo Built xm5-headtracker.exe
+  echo Built sony-head-tracker.exe
 ) else (
   echo.
   echo Build failed.

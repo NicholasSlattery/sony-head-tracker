@@ -1,10 +1,13 @@
-// xm5_head_tracker.cpp
+// sony_head_tracker.cpp
 // =============================================================================
-// XM5 Head Tracker Bridge -- single-file edition
+// Sony Head Tracker for Windows -- single-file edition
 //
-// A native Windows 11 bridge that turns any headset implementing the Android
-// Head Tracker HID protocol (Sony WH-1000XM5 and others) into usable
-// head-tracking data. It discovers the headset's HID top-level collection (or
+// A native Windows 11 bridge that turns the motion sensor already inside
+// compatible Sony headphones and earbuds into usable head-tracking data.
+// The engine is protocol-based: it reads any device that exposes the Android
+// Head Tracker HID sensor (originally developed and tested on the Sony
+// WH-1000XM5, now any compatible Sony headset that speaks the same protocol).
+// It discovers the headset's HID top-level collection (or
 // the Windows Sensor API custom sensor), validates the "#AndroidHeadTracker#"
 // marker, resolves which paired Bluetooth headset the sensor belongs to,
 // enables reporting, parses orientation, and:
@@ -15,7 +18,8 @@
 // This file is the entire bridge merged into one translation unit so it can be
 // dropped into any project and published as a standalone open-source program.
 // It contains no music-player, spatial-audio, or upmix code -- just the gyro /
-// head-orientation pipeline.
+// head-orientation pipeline. This is an unofficial open-source project and is
+// not affiliated with or endorsed by Sony.
 //
 // DEFAULT ORIENTATION CONVENTION
 // ------------------------------
@@ -28,23 +32,23 @@
 // BUILD (Developer PowerShell / x64 Native Tools Command Prompt for VS):
 //   rc /nologo app.rc
 //   cl /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 ^
-//      /DUNICODE /D_UNICODE xm5_head_tracker.cpp app.res /Fe:xm5-headtracker.exe
+//      /DUNICODE /D_UNICODE sony_head_tracker.cpp app.res /Fe:sony-head-tracker.exe
 // (app.rc embeds the icon, version info, and the Common Controls v6 manifest.
 //  All required import libraries are pulled in via #pragma comment below, so no
 //  extra linker arguments are needed. Requires a C++20-capable MSVC and a current
 //  Windows 11 SDK.)
 //
 // USAGE:
-//   xm5-headtracker.exe                 (no args -> diagnostics GUI)
-//   xm5-headtracker.exe probe [--include-disabled]
-//   xm5-headtracker.exe dump [--seconds N]
-//   xm5-headtracker.exe repair
-//   xm5-headtracker.exe bluetooth-probe [--all-le] [--name FILTER]
-//   xm5-headtracker.exe bluetooth-rebind [--name FILTER]   (default: auto-detect)
-//   xm5-headtracker.exe bluetooth-generic-hid           (run elevated)
-//   xm5-headtracker.exe bridge [--port 4242] [--seconds N]
+//   sony-head-tracker.exe                 (no args -> diagnostics GUI)
+//   sony-head-tracker.exe probe [--include-disabled]
+//   sony-head-tracker.exe dump [--seconds N]
+//   sony-head-tracker.exe repair
+//   sony-head-tracker.exe bluetooth-probe [--all-le] [--name FILTER]
+//   sony-head-tracker.exe bluetooth-rebind [--name FILTER]   (default: auto-detect)
+//   sony-head-tracker.exe bluetooth-generic-hid           (run elevated)
+//   sony-head-tracker.exe bridge [--port 4242] [--seconds N]
 //                              [--axis-map YXZ] [--invert XZ] [--smoothing 0.18]
-//   xm5-headtracker.exe help | version
+//   sony-head-tracker.exe help | version
 //
 // The bridge sends six native little-endian doubles in OpenTrack pose order
 // (x, y, z, yaw, pitch, roll) to the chosen UDP port, and a UTF-8 JSON object to
@@ -55,7 +59,7 @@
 // -----------------------------------------------------------------------------
 // MIT License
 //
-// Copyright (c) 2026 Nicholas Slattery and the XM5 Head Tracker Bridge contributors
+// Copyright (c) 2026 Nicholas Slattery and the Sony Head Tracker contributors
 //
 // Permission is hereby granted, free of charge, to any person obtaining a copy
 // of this software and associated documentation files (the "Software"), to deal
@@ -158,10 +162,10 @@ using Microsoft::WRL::ComPtr;
 // =============================================================================
 //  Core types
 // =============================================================================
-namespace xm5 {
+namespace sony {
 
 // Project version -- keep in sync with CHANGELOG.md and release tags.
-inline constexpr std::wstring_view kVersion = L"1.2.0";
+inline constexpr std::wstring_view kVersion = L"1.3.0";
 
 struct Vec3 {
     double x{};
@@ -258,12 +262,12 @@ struct SensorInfo {
     bool androidHeadTracker{};
 };
 
-} // namespace xm5
+} // namespace sony
 
 // =============================================================================
 //  Logger
 // =============================================================================
-namespace xm5 {
+namespace sony {
 
 enum class LogLevel { debug, info, warning, error };
 
@@ -323,12 +327,12 @@ std::wstring windowsError(unsigned long code) {
     return result;
 }
 
-} // namespace xm5
+} // namespace sony
 
 // =============================================================================
 //  Math
 // =============================================================================
-namespace xm5 {
+namespace sony {
 
 Quaternion normalize(Quaternion q);
 Quaternion conjugate(Quaternion q);
@@ -439,12 +443,12 @@ std::vector<double> decodePackedDescriptorValues(std::span<const std::uint8_t> p
     return result;
 }
 
-} // namespace xm5
+} // namespace sony
 
 // =============================================================================
 //  Raw HID backend
 // =============================================================================
-namespace xm5 {
+namespace sony {
 
 // Bluetooth helpers, defined in the Bluetooth section below. The HID backend
 // uses them to resolve which paired headset a head-tracker HID node belongs to.
@@ -486,7 +490,7 @@ constexpr USAGE kRotation = 0x0544;        // orientation rotation vector
 constexpr USAGE kAngularVelocity = 0x0545; // gyroscope (rad/s), vector form
 constexpr USAGE kResetCounter = 0x0546;
 // Standard HID sensor-page motion fields, parsed opportunistically so that any
-// firmware which also reports raw inertial data has it surfaced. The XM5's
+// firmware which also reports raw inertial data has it surfaced. Sony's
 // Android Head Tracker profile normally exposes orientation + gyro only.
 constexpr USAGE kAccelerationVector = 0x0452; // acceleration, vector form
 constexpr USAGE kAccelerationX = 0x0453;      // acceleration about X (m/s^2)
@@ -790,12 +794,12 @@ std::wstring hexDump(const std::vector<std::uint8_t>& bytes) {
     std::wostringstream out;out<<std::hex<<std::uppercase<<std::setfill(L'0');for(std::size_t i=0;i<bytes.size();++i){if(i)out<<L' ';out<<std::setw(2)<<static_cast<unsigned>(bytes[i]);}return out.str();
 }
 
-} // namespace xm5
+} // namespace sony
 
 // =============================================================================
 //  Windows Sensor API fallback backend
 // =============================================================================
-namespace xm5 {
+namespace sony {
 
 class SensorBackend {
 public:
@@ -888,12 +892,12 @@ bool SensorBackend::connect(const SensorInfo& info,SampleCallback callback) {
 
 void SensorBackend::disconnect(){running_=false;if(reader_.joinable()){reader_.request_stop();reader_.join();}}
 
-} // namespace xm5
+} // namespace sony
 
 // =============================================================================
 //  Read-only Bluetooth investigation + driver-rebind recovery
 // =============================================================================
-namespace xm5 {
+namespace sony {
 
 struct BluetoothProbeOptions {
     std::wstring_view nameFilter{};   // empty = probe every paired device
@@ -1185,12 +1189,12 @@ int useGenericHidDriver(std::wostream& output){
     output<<L"Generic HID binding succeeded; reboot required="<<(reboot?L"yes":L"no")<<L"\n";return reboot?1:0;
 }
 
-} // namespace xm5
+} // namespace sony
 
 // =============================================================================
 //  Orientation filter (smoothing, recenter, gentle drift correction, axis map)
 // =============================================================================
-namespace xm5 {
+namespace sony {
 
 class OrientationFilter {
 public:
@@ -1244,12 +1248,12 @@ TrackingSample OrientationFilter::process(TrackingSample sample) {
     return sample;
 }
 
-} // namespace xm5
+} // namespace sony
 
 // =============================================================================
 //  UDP output (OpenTrack doubles + JSON)
 // =============================================================================
-namespace xm5 {
+namespace sony {
 
 class UdpOutput {
 public:
@@ -1319,12 +1323,12 @@ void UdpOutput::send(const TrackingSample& s) {
 
 void UdpOutput::close() { if (socket_ != INVALID_SOCKET) { closesocket(socket_); socket_ = INVALID_SOCKET; } }
 
-} // namespace xm5
+} // namespace sony
 
 // =============================================================================
 //  Diagnostics GUI (Refresh, Repair Tracker, Recenter, live yaw/pitch/roll graph)
 // =============================================================================
-namespace xm5 {
+namespace sony {
 
 int runGui(HINSTANCE instance, int showCommand);
 
@@ -1335,7 +1339,7 @@ constexpr int kRefresh=1001,kRecenter=1002,kDeviceList=1003,kRepair=1004,kShowAl
 
 class Window {
 public:
-    HINSTANCE instance{}; HWND hwnd{}, list{}, details{}, raw{}, stats{}, motion{}, refresh{}, repair{}, recenter{}, invertX{}, invertY{}, invertZ{}, mapping{}, smoothing{}, showAll{};
+    HINSTANCE instance{}; HWND hwnd{}, list{}, details{}, raw{}, stats{}, motion{}, refresh{}, repair{}, recenter{}, invertX{}, invertY{}, invertZ{}, mapping{}, smoothing{}, smoothingLabel{}, showAll{};
     HFONT font{}, titleFont{}, sectionFont{}; HICON appIcon{};
     HBRUSH background{}, panel{}, headerBrush{};
     HidBackend hid; SensorBackend sensors; OrientationFilter filter; UdpOutput udp;
@@ -1437,7 +1441,7 @@ public:
             udp.setDeviceLabel(headsetName);
             connected=hid.connect(*it,[w=hwnd](const auto& bytes){PostMessageW(w,kRawMessage,0,reinterpret_cast<LPARAM>(new std::vector<std::uint8_t>(bytes)));},[w=hwnd](TrackingSample s){PostMessageW(w,kSampleMessage,0,reinterpret_cast<LPARAM>(new TrackingSample(std::move(s))));});
             if(connected){
-                SetWindowTextW(hwnd,std::format(L"Head Tracker Bridge {} — {}",kVersion,headsetName).c_str());
+                SetWindowTextW(hwnd,std::format(L"Sony Head Tracker {} - {}",kVersion,headsetName).c_str());
                 setStatus(std::format(L"Tracking {}",headsetName),kOk);
                 SetWindowTextW(stats,std::format(L"Connected to {}. Waiting for the first sample…",headsetName).c_str());
             }else setStatus(std::format(L"Found {} but could not open it — see the log in the details pane",headsetName),kWarn);
@@ -1450,7 +1454,7 @@ public:
             if(connected)setStatus(std::format(L"Tracking {} via the Windows Sensor API",headsetName),kOk);
             return;}
         headsetName.clear();udp.setDeviceLabel({});
-        SetWindowTextW(hwnd,std::format(L"Head Tracker Bridge {}",kVersion).c_str());
+        SetWindowTextW(hwnd,std::format(L"Sony Head Tracker {}",kVersion).c_str());
         bool airpods=false;for(const auto& name:pairedBluetoothDeviceNames())if(containsInsensitive(name,L"AirPods")){airpods=true;break;}
         setStatus(L"No head tracker found — if the headset is paired and on, press Repair Tracker (admin approval required)",kWarn);
         SetWindowTextW(stats,airpods
@@ -1474,7 +1478,7 @@ public:
     void layout(){const auto r=clientRect();const int w=r.right,h=r.bottom;
         // Toolbar row under the header.
         MoveWindow(refresh,16,76,96,30,TRUE);MoveWindow(repair,118,76,158,30,TRUE);MoveWindow(recenter,282,76,96,30,TRUE);
-        MoveWindow(mapping,412,80,74,220,TRUE);MoveWindow(invertX,494,80,88,24,TRUE);MoveWindow(invertY,586,80,88,24,TRUE);MoveWindow(invertZ,678,80,88,24,TRUE);MoveWindow(smoothing,772,76,160,30,TRUE);
+        MoveWindow(mapping,412,80,74,220,TRUE);MoveWindow(invertX,494,80,88,24,TRUE);MoveWindow(invertY,586,80,88,24,TRUE);MoveWindow(invertZ,678,80,88,24,TRUE);MoveWindow(smoothingLabel,772,76,74,30,TRUE);MoveWindow(smoothing,848,76,150,30,TRUE);
         // Device list + details columns, above the painted output panel.
         const int lw=listWidth();const int panelTop=136;const int panelBottom=h-334;
         MoveWindow(showAll,16+lw-152,112,152,20,TRUE);
@@ -1493,11 +1497,12 @@ public:
         if(appIcon)DrawIconEx(dc,16,16,appIcon,32,32,0,nullptr,DI_NORMAL);
         SetBkMode(dc,TRANSPARENT);
         SelectObject(dc,titleFont);SetTextColor(dc,kText);
-        constexpr std::wstring_view title=L"Head Tracker Bridge";
+        constexpr std::wstring_view title=L"Sony Head Tracker";
         TextOutW(dc,60,6,title.data(),static_cast<int>(title.size()));
         SIZE ts{};GetTextExtentPoint32W(dc,title.data(),static_cast<int>(title.size()),&ts);
         SelectObject(dc,font);SetTextColor(dc,kMuted);
-        const auto version=std::wstring(kVersion);
+        // Version, then an "Unofficial" tag so users know this is not a Sony product.
+        const auto version=std::wstring(kVersion)+L"  ·  Unofficial, not affiliated with Sony";
         TextOutW(dc,60+ts.cx+12,12,version.c_str(),static_cast<int>(version.size()));
         // Status dot + text.
         HBRUSH dot=CreateSolidBrush(statusColor);auto oldBrush=SelectObject(dc,dot);
@@ -1583,6 +1588,7 @@ LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp){auto* self=reinter
         self->refresh=CreateWindowW(L"BUTTON",L"Refresh",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kRefresh)),self->instance,nullptr);self->repair=CreateWindowW(L"BUTTON",L"Repair Tracker",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kRepair)),self->instance,nullptr);self->recenter=CreateWindowW(L"BUTTON",L"Recenter",WS_CHILD|WS_VISIBLE|BS_PUSHBUTTON,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kRecenter)),self->instance,nullptr);self->list=CreateWindowW(L"LISTBOX",L"",WS_CHILD|WS_VISIBLE|WS_BORDER|LBS_NOTIFY|WS_VSCROLL,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kDeviceList)),self->instance,nullptr);self->details=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"",WS_CHILD|WS_VISIBLE|ES_MULTILINE|ES_AUTOVSCROLL|ES_READONLY|WS_VSCROLL,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->raw=CreateWindowExW(WS_EX_CLIENTEDGE,L"EDIT",L"Raw packet: waiting",WS_CHILD|WS_VISIBLE|ES_READONLY|ES_AUTOHSCROLL,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->stats=CreateWindowW(L"STATIC",L"Discovering devices…",WS_CHILD|WS_VISIBLE,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->motion=CreateWindowW(L"STATIC",L"Gyroscope  …        Accelerometer  …",WS_CHILD|WS_VISIBLE,0,0,0,0,hwnd,nullptr,self->instance,nullptr);
         self->mapping=CreateWindowW(WC_COMBOBOXW,L"",WS_CHILD|WS_VISIBLE|CBS_DROPDOWNLIST,0,0,0,0,hwnd,nullptr,self->instance,nullptr);for(const auto* text:{L"XYZ",L"XZY",L"YXZ",L"YZX",L"ZXY",L"ZYX"})SendMessageW(self->mapping,CB_ADDSTRING,0,reinterpret_cast<LPARAM>(text));SendMessageW(self->mapping,CB_SETCURSEL,2,0);
         self->invertX=CreateWindowW(L"BUTTON",L"Invert X",WS_CHILD|WS_VISIBLE|BS_AUTOCHECKBOX,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->invertY=CreateWindowW(L"BUTTON",L"Invert Y",WS_CHILD|WS_VISIBLE|BS_AUTOCHECKBOX,0,0,0,0,hwnd,nullptr,self->instance,nullptr);self->invertZ=CreateWindowW(L"BUTTON",L"Invert Z",WS_CHILD|WS_VISIBLE|BS_AUTOCHECKBOX,0,0,0,0,hwnd,nullptr,self->instance,nullptr);SendMessageW(self->invertX,BM_SETCHECK,BST_CHECKED,0);SendMessageW(self->invertZ,BM_SETCHECK,BST_CHECKED,0);self->smoothing=CreateWindowW(TRACKBAR_CLASSW,L"",WS_CHILD|WS_VISIBLE|TBS_AUTOTICKS,0,0,0,0,hwnd,nullptr,self->instance,nullptr);SendMessageW(self->smoothing,TBM_SETRANGE,TRUE,MAKELONG(1,100));SendMessageW(self->smoothing,TBM_SETPOS,TRUE,18);
+        self->smoothingLabel=CreateWindowW(L"STATIC",L"Smoothing",WS_CHILD|WS_VISIBLE|SS_CENTERIMAGE,0,0,0,0,hwnd,nullptr,self->instance,nullptr);
         self->showAll=CreateWindowW(L"BUTTON",L"Show all devices",WS_CHILD|WS_VISIBLE|BS_AUTOCHECKBOX,0,0,0,0,hwnd,reinterpret_cast<HMENU>(static_cast<INT_PTR>(kShowAll)),self->instance,nullptr);
         // The UAC shield tells users up front that Repair Tracker will ask for
         // administrator approval (the app itself always runs unelevated).
@@ -1593,7 +1599,7 @@ LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp){auto* self=reinter
         for(auto h:{self->refresh,self->repair,self->recenter,self->list,self->details})SetWindowTheme(h,L"DarkMode_Explorer",nullptr);
         SetWindowTheme(self->mapping,L"DarkMode_CFD",nullptr);
         for(auto h:{self->invertX,self->invertY,self->invertZ,self->showAll,self->smoothing})SetWindowTheme(h,L" ",L" ");
-        for(auto h:{self->refresh,self->repair,self->recenter,self->list,self->details,self->raw,self->stats,self->motion,self->mapping,self->invertX,self->invertY,self->invertZ,self->smoothing,self->showAll})SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(self->font),TRUE);
+        for(auto h:{self->refresh,self->repair,self->recenter,self->list,self->details,self->raw,self->stats,self->motion,self->mapping,self->invertX,self->invertY,self->invertZ,self->smoothing,self->smoothingLabel,self->showAll})SendMessageW(h,WM_SETFONT,reinterpret_cast<WPARAM>(self->font),TRUE);
         self->udpPort=4242;self->udp.open("127.0.0.1",self->udpPort);
         RegisterHotKey(hwnd,1,MOD_CONTROL|MOD_ALT,'C');SetTimer(hwnd,1,2000,nullptr);self->enumerate();return 0;}
     case WM_SIZE:self->layout();return 0;case WM_PAINT:self->paint();return 0;
@@ -1602,7 +1608,7 @@ LRESULT CALLBACK proc(HWND hwnd,UINT msg,WPARAM wp,LPARAM lp){auto* self=reinter
     case WM_CTLCOLORSTATIC:{auto dc=reinterpret_cast<HDC>(wp);SetBkColor(dc,Window::kWindowBg);SetTextColor(dc,Window::kText);return reinterpret_cast<LRESULT>(self->background);}
     case WM_CTLCOLORBTN:{auto dc=reinterpret_cast<HDC>(wp);SetBkColor(dc,Window::kWindowBg);SetTextColor(dc,Window::kText);return reinterpret_cast<LRESULT>(self->background);}
     case WM_CTLCOLOREDIT:case WM_CTLCOLORLISTBOX:{auto dc=reinterpret_cast<HDC>(wp);SetBkColor(dc,Window::kPanelBg);SetTextColor(dc,Window::kText);return reinterpret_cast<LRESULT>(self->panel);}
-    case WM_COMMAND:if(LOWORD(wp)==kRefresh){self->enumerate();return 0;}if(LOWORD(wp)==kRepair){wchar_t executable[MAX_PATH]{};GetModuleFileNameW(nullptr,executable,MAX_PATH);const auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd,L"open",executable,L"repair",nullptr,SW_SHOWNORMAL));if(result>32){SetWindowTextW(self->stats,L"Repair started. Approve the Windows prompt; this window will reopen automatically.");PostMessageW(hwnd,WM_CLOSE,0,0);}else MessageBoxW(hwnd,L"Could not start the repair command.",L"Head Tracker Bridge",MB_OK|MB_ICONERROR);return 0;}if(LOWORD(wp)==kRecenter){self->filter.recenter();return 0;}if(LOWORD(wp)==kShowAll){self->rebuildList();self->showDetails(0);return 0;}if(LOWORD(wp)==kDeviceList&&HIWORD(wp)==LBN_SELCHANGE){self->showDetails(static_cast<int>(SendMessageW(self->list,LB_GETCURSEL,0,0)));return 0;}if(reinterpret_cast<HWND>(lp)==self->mapping||reinterpret_cast<HWND>(lp)==self->invertX||reinterpret_cast<HWND>(lp)==self->invertY||reinterpret_cast<HWND>(lp)==self->invertZ){self->applyControls();return 0;}break;
+    case WM_COMMAND:if(LOWORD(wp)==kRefresh){self->enumerate();return 0;}if(LOWORD(wp)==kRepair){wchar_t executable[MAX_PATH]{};GetModuleFileNameW(nullptr,executable,MAX_PATH);const auto result=reinterpret_cast<INT_PTR>(ShellExecuteW(hwnd,L"open",executable,L"repair",nullptr,SW_SHOWNORMAL));if(result>32){SetWindowTextW(self->stats,L"Repair started. Approve the Windows prompt; this window will reopen automatically.");PostMessageW(hwnd,WM_CLOSE,0,0);}else MessageBoxW(hwnd,L"Could not start the repair command.",L"Sony Head Tracker",MB_OK|MB_ICONERROR);return 0;}if(LOWORD(wp)==kRecenter){self->filter.recenter();return 0;}if(LOWORD(wp)==kShowAll){self->rebuildList();self->showDetails(0);return 0;}if(LOWORD(wp)==kDeviceList&&HIWORD(wp)==LBN_SELCHANGE){self->showDetails(static_cast<int>(SendMessageW(self->list,LB_GETCURSEL,0,0)));return 0;}if(reinterpret_cast<HWND>(lp)==self->mapping||reinterpret_cast<HWND>(lp)==self->invertX||reinterpret_cast<HWND>(lp)==self->invertY||reinterpret_cast<HWND>(lp)==self->invertZ){self->applyControls();return 0;}break;
     case WM_HSCROLL:if(reinterpret_cast<HWND>(lp)==self->smoothing){self->applyControls();return 0;}break;
     case WM_HOTKEY:self->filter.recenter();return 0;
     case WM_TIMER:if(!self->hid.connected()&&!self->sensors.connected()&&!self->connected){self->enumerate();}else if(!self->hid.connected()&&!self->sensors.connected()){self->connected=false;self->enumerate();}return 0;
@@ -1617,11 +1623,11 @@ int runGui(HINSTANCE instance,int showCommand){
 #ifdef DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2
     SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2);
 #endif
-    INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_STANDARD_CLASSES};InitCommonControlsEx(&controls);Window state;state.instance=instance;WNDCLASSEXW wc{sizeof(wc)};wc.style=CS_HREDRAW|CS_VREDRAW;wc.lpfnWndProc=proc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.lpszClassName=L"XM5HeadTrackerBridgeWindow";
+    INITCOMMONCONTROLSEX controls{sizeof(controls),ICC_STANDARD_CLASSES};InitCommonControlsEx(&controls);Window state;state.instance=instance;WNDCLASSEXW wc{sizeof(wc)};wc.style=CS_HREDRAW|CS_VREDRAW;wc.lpfnWndProc=proc;wc.hInstance=instance;wc.hCursor=LoadCursorW(nullptr,IDC_ARROW);wc.lpszClassName=L"SonyHeadTrackerWindow";
     wc.hIcon=LoadIconW(instance,MAKEINTRESOURCEW(1));if(!wc.hIcon)wc.hIcon=LoadIconW(nullptr,IDI_APPLICATION);
     wc.hIconSm=static_cast<HICON>(LoadImageW(instance,MAKEINTRESOURCEW(1),IMAGE_ICON,16,16,LR_DEFAULTCOLOR));
-    RegisterClassExW(&wc);const auto title=std::format(L"Head Tracker Bridge {}",kVersion);auto hwnd=CreateWindowExW(0,wc.lpszClassName,title.c_str(),WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,1160,860,nullptr,nullptr,instance,&state);if(!hwnd)return 1;ShowWindow(hwnd,showCommand);UpdateWindow(hwnd);MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return static_cast<int>(msg.wParam);}
-} // namespace xm5
+    RegisterClassExW(&wc);const auto title=std::format(L"Sony Head Tracker {}",kVersion);auto hwnd=CreateWindowExW(0,wc.lpszClassName,title.c_str(),WS_OVERLAPPEDWINDOW|WS_CLIPCHILDREN,CW_USEDEFAULT,CW_USEDEFAULT,1160,860,nullptr,nullptr,instance,&state);if(!hwnd)return 1;ShowWindow(hwnd,showCommand);UpdateWindow(hwnd);MSG msg{};while(GetMessageW(&msg,nullptr,0,0)>0){TranslateMessage(&msg);DispatchMessageW(&msg);}return static_cast<int>(msg.wParam);}
+} // namespace sony
 
 // =============================================================================
 //  CLI entry point + one-click Repair Tracker orchestration
@@ -1645,34 +1651,34 @@ void console(){
     SetConsoleCtrlHandler(consoleHandler,TRUE);
 }
 void printUsage(std::wostream& out){
-    out<<L"Head Tracker Bridge "<<xm5::kVersion<<L"\n"
-       <<L"Streams head tracking from any headset implementing the Android Head Tracker\n"
-       <<L"HID protocol (Sony WH-1000XM5 and others) over UDP (OpenTrack + JSON). The\n"
-       <<L"connected headset is auto-detected and named in the output.\n"
+    out<<L"Sony Head Tracker for Windows "<<sony::kVersion<<L"\n"
+       <<L"Streams head tracking from compatible Sony headphones that expose the Android\n"
+       <<L"Head Tracker HID sensor, over UDP (OpenTrack + JSON). The connected headset is\n"
+       <<L"auto-detected and named in the output. Unofficial; not affiliated with Sony.\n"
        <<L"AirPods are recognised but cannot work: Apple uses a proprietary protocol\n"
        <<L"that Windows does not expose to applications (see README > Compatibility).\n\n"
        <<L"Usage:\n"
-       <<L"  xm5-headtracker.exe                       diagnostics GUI (default)\n"
-       <<L"  xm5-headtracker.exe bridge [--port 4242] [--seconds N]\n"
+       <<L"  sony-head-tracker.exe                       diagnostics GUI (default)\n"
+       <<L"  sony-head-tracker.exe bridge [--port 4242] [--seconds N]\n"
        <<L"                             [--axis-map YXZ] [--invert XZ] [--smoothing 0.18]\n"
-       <<L"  xm5-headtracker.exe probe [--include-disabled]\n"
-       <<L"  xm5-headtracker.exe dump [--seconds N]\n"
-       <<L"  xm5-headtracker.exe repair\n"
-       <<L"  xm5-headtracker.exe bluetooth-probe [--all-le] [--name FILTER]\n"
-       <<L"  xm5-headtracker.exe bluetooth-rebind [--name FILTER]\n"
+       <<L"  sony-head-tracker.exe probe [--include-disabled]\n"
+       <<L"  sony-head-tracker.exe dump [--seconds N]\n"
+       <<L"  sony-head-tracker.exe repair\n"
+       <<L"  sony-head-tracker.exe bluetooth-probe [--all-le] [--name FILTER]\n"
+       <<L"  sony-head-tracker.exe bluetooth-rebind [--name FILTER]\n"
        <<L"                             (--name defaults to auto-detecting the headset)\n"
-       <<L"  xm5-headtracker.exe bluetooth-generic-hid   (run from an elevated prompt)\n"
-       <<L"  xm5-headtracker.exe help | version\n\n"
+       <<L"  sony-head-tracker.exe bluetooth-generic-hid   (run from an elevated prompt)\n"
+       <<L"  sony-head-tracker.exe help | version\n\n"
        <<L"bridge sends six little-endian doubles (x, y, z, yaw, pitch, roll) to UDP\n"
        <<L"127.0.0.1:<port> and a JSON datagram to <port>+1. Loopback only; unauthenticated.\n";
 }
-void printDevice(const xm5::DeviceInfo& d){std::wcout<<std::format(L"HID {}\n  {} {}\n  usage 0x{:04X}:0x{:04X}, VID/PID {:04X}:{:04X}, reports input={} feature={}\n",d.instanceId,d.manufacturer,d.product,d.usagePage,d.usage,d.vendorId,d.productId,d.inputReportBytes,d.featureReportBytes);if(!d.bluetoothName.empty())std::wcout<<L"  Bluetooth headset: "<<d.bluetoothName<<L'\n';std::wcout<<std::format(L"  description: {}\n  verified Android tracker: {}\n",std::wstring(d.sensorDescription.begin(),d.sensorDescription.end()),d.androidHeadTracker?L"yes":L"no");for(const auto& f:d.fields)std::wcout<<std::format(L"    {} id={} {:04X}:{:04X} count={} bits={} logical={}..{} physical={}..{} exp={}\n",f.feature?L"feature":L"input",f.reportId,f.usagePage,f.usage,f.reportCount,f.bitSize,f.logicalMin,f.logicalMax,f.physicalMin,f.physicalMax,f.unitExponent);}
+void printDevice(const sony::DeviceInfo& d){std::wcout<<std::format(L"HID {}\n  {} {}\n  usage 0x{:04X}:0x{:04X}, VID/PID {:04X}:{:04X}, reports input={} feature={}\n",d.instanceId,d.manufacturer,d.product,d.usagePage,d.usage,d.vendorId,d.productId,d.inputReportBytes,d.featureReportBytes);if(!d.bluetoothName.empty())std::wcout<<L"  Bluetooth headset: "<<d.bluetoothName<<L'\n';std::wcout<<std::format(L"  description: {}\n  verified Android tracker: {}\n",std::wstring(d.sensorDescription.begin(),d.sensorDescription.end()),d.androidHeadTracker?L"yes":L"no");for(const auto& f:d.fields)std::wcout<<std::format(L"    {} id={} {:04X}:{:04X} count={} bits={} logical={}..{} physical={}..{} exp={}\n",f.feature?L"feature":L"input",f.reportId,f.usagePage,f.usage,f.reportCount,f.bitSize,f.logicalMin,f.logicalMax,f.physicalMin,f.physicalMax,f.unitExponent);}
 
 // Names the first paired AirPods (any generation), or empty when none are paired.
 // AirPods never implement the Android Head Tracker protocol, so when they are the
 // only headphones present the diagnostics say why nothing was found.
 std::wstring pairedAirPodsName(){
-    for(const auto& name:xm5::pairedBluetoothDeviceNames()){
+    for(const auto& name:sony::pairedBluetoothDeviceNames()){
         std::wstring low(name);std::ranges::transform(low,low.begin(),[](wchar_t c){return static_cast<wchar_t>(towlower(c));});
         if(low.find(L"airpods")!=std::wstring::npos)return name;
     }
@@ -1683,14 +1689,14 @@ bool elevated(){
     HANDLE token{};if(!OpenProcessToken(GetCurrentProcess(),TOKEN_QUERY,&token))return false;
     TOKEN_ELEVATION value{};DWORD bytes{};const bool result=GetTokenInformation(token,TokenElevation,&value,sizeof(value),&bytes)&&value.TokenIsElevated;CloseHandle(token);return result;
 }
-BOOL CALLBACK closeBridgeWindow(HWND hwnd,LPARAM){wchar_t name[64]{};GetClassNameW(hwnd,name,64);if(std::wstring_view(name)==L"XM5HeadTrackerBridgeWindow")PostMessageW(hwnd,WM_CLOSE,0,0);return TRUE;}
-bool trackerAccessible(){xm5::HidBackend hid;const auto devices=hid.enumerate();return std::ranges::any_of(devices,[](const auto& d){return d.androidHeadTracker;});}
+BOOL CALLBACK closeBridgeWindow(HWND hwnd,LPARAM){wchar_t name[64]{};GetClassNameW(hwnd,name,64);if(std::wstring_view(name)==L"SonyHeadTrackerWindow")PostMessageW(hwnd,WM_CLOSE,0,0);return TRUE;}
+bool trackerAccessible(){sony::HidBackend hid;const auto devices=hid.enumerate();return std::ranges::any_of(devices,[](const auto& d){return d.androidHeadTracker;});}
 int elevatedRepair(){
     std::wcout<<L"Head tracker one-click repair\n=============================\n";
     if(trackerAccessible()){std::wcout<<L"The Android Head Tracker is already accessible. No driver change was needed.\n";return 0;}
     std::wcout<<L"Recreating the headset's Bluetooth HID child (auto-detecting the headset)...\n";
-    const auto rebind=xm5::rebindBluetoothHid(L"",std::wcout);if(rebind!=0)return rebind;
-    int binding=2;for(int attempt=0;attempt<4&&binding==2;++attempt){if(attempt)std::this_thread::sleep_for(std::chrono::seconds(2));binding=xm5::useGenericHidDriver(std::wcout);}
+    const auto rebind=sony::rebindBluetoothHid(L"",std::wcout);if(rebind!=0)return rebind;
+    int binding=2;for(int attempt=0;attempt<4&&binding==2;++attempt){if(attempt)std::this_thread::sleep_for(std::chrono::seconds(2));binding=sony::useGenericHidDriver(std::wcout);}
     if(binding!=0&&binding!=1)return binding;
     for(int attempt=0;attempt<10;++attempt){std::this_thread::sleep_for(std::chrono::seconds(1));if(trackerAccessible()){std::wcout<<L"Repair complete: #AndroidHeadTracker# is accessible.\n";return 0;}}
     std::wcerr<<L"Repair completed its device steps, but the tracker did not become accessible. Power-cycle the headphones and press Repair Tracker once more.\n";return 4;
@@ -1704,14 +1710,14 @@ int runRepair(bool launchGui){
 }
 }
 
-int wmain(int argc,wchar_t** argv){const std::wstring command=argc>1?argv[1]:L"gui";if(command==L"gui"){FreeConsole();return xm5::runGui(GetModuleHandleW(nullptr),SW_SHOWDEFAULT);}if(command==L"repair"){bool launch=true;for(int i=2;i<argc;++i)if(std::wstring_view(argv[i])==L"--no-launch")launch=false;return runRepair(launch);}console();
-    if(command==L"version"||command==L"--version"||command==L"-v"){std::wcout<<L"xm5-headtracker "<<xm5::kVersion<<L'\n';return 0;}
+int wmain(int argc,wchar_t** argv){const std::wstring command=argc>1?argv[1]:L"gui";if(command==L"gui"){FreeConsole();return sony::runGui(GetModuleHandleW(nullptr),SW_SHOWDEFAULT);}if(command==L"repair"){bool launch=true;for(int i=2;i<argc;++i)if(std::wstring_view(argv[i])==L"--no-launch")launch=false;return runRepair(launch);}console();
+    if(command==L"version"||command==L"--version"||command==L"-v"){std::wcout<<L"sony-head-tracker "<<sony::kVersion<<L'\n';return 0;}
     if(command==L"help"||command==L"--help"||command==L"-h"||command==L"/?"){printUsage(std::wcout);return 0;}
-    xm5::Logger::instance().setSink([](xm5::LogLevel,const std::wstring& line){std::wcerr<<line<<L'\n';});
-    if(command==L"bluetooth-probe"){xm5::BluetoothProbeOptions options;std::wstring name;for(int i=2;i<argc;++i){const std::wstring_view option=argv[i];if(option==L"--all-le")options.probeAllLeDevices=true;else if(option==L"--name"&&i+1<argc)name=argv[++i];}options.nameFilter=name;return xm5::runBluetoothProbe(options,std::wcout);}
-    if(command==L"bluetooth-rebind"){std::wstring name;for(int i=2;i+1<argc;++i)if(std::wstring_view(argv[i])==L"--name")name=argv[++i];return xm5::rebindBluetoothHid(name,std::wcout);}
-    if(command==L"bluetooth-generic-hid")return xm5::useGenericHidDriver(std::wcout);
-    xm5::HidBackend hid;xm5::SensorBackend sensor;
+    sony::Logger::instance().setSink([](sony::LogLevel,const std::wstring& line){std::wcerr<<line<<L'\n';});
+    if(command==L"bluetooth-probe"){sony::BluetoothProbeOptions options;std::wstring name;for(int i=2;i<argc;++i){const std::wstring_view option=argv[i];if(option==L"--all-le")options.probeAllLeDevices=true;else if(option==L"--name"&&i+1<argc)name=argv[++i];}options.nameFilter=name;return sony::runBluetoothProbe(options,std::wcout);}
+    if(command==L"bluetooth-rebind"){std::wstring name;for(int i=2;i+1<argc;++i)if(std::wstring_view(argv[i])==L"--name")name=argv[++i];return sony::rebindBluetoothHid(name,std::wcout);}
+    if(command==L"bluetooth-generic-hid")return sony::useGenericHidDriver(std::wcout);
+    sony::HidBackend hid;sony::SensorBackend sensor;
     bool includeDisabled=false;if(command==L"probe")for(int i=2;i<argc;++i)if(std::wstring_view(argv[i])==L"--include-disabled")includeDisabled=true;
     auto devices=hid.enumerate(!includeDisabled);auto sensors=sensor.enumerate();
     if(command==L"probe"){for(const auto& d:devices)printDevice(d);for(const auto& s:sensors)std::wcout<<L"Sensor API "<<s.friendlyName<<L" | "<<s.description<<L" | "<<s.id<<L'\n';const auto found=std::any_of(devices.begin(),devices.end(),[](const auto& d){return d.androidHeadTracker;})||std::any_of(sensors.begin(),sensors.end(),[](const auto& s){return s.androidHeadTracker;});
@@ -1722,9 +1728,9 @@ int wmain(int argc,wchar_t** argv){const std::wstring command=argc>1?argv[1]:L"g
         }
         return found?0:2;}
     auto selected=std::find_if(devices.begin(),devices.end(),[](const auto& d){return d.androidHeadTracker;});
-    if(command==L"dump"){if(selected==devices.end()){std::wcerr<<L"No verified raw HID head tracker is accessible; Sensor API cannot expose raw packets.\n";return 2;}unsigned seconds{};for(int i=2;i+1<argc;++i)if(std::wstring_view(argv[i])==L"--seconds")seconds=std::wcstoul(argv[++i],nullptr,10);if(!hid.connect(*selected,[](const auto& b){std::wcout<<xm5::hexDump(b)<<L'\n';},[](auto){}))return 3;const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(seconds);while(!stopRequested&&(!seconds||std::chrono::steady_clock::now()<deadline))std::this_thread::sleep_for(std::chrono::milliseconds(100));hid.disconnect();return 0;}
+    if(command==L"dump"){if(selected==devices.end()){std::wcerr<<L"No verified raw HID head tracker is accessible; Sensor API cannot expose raw packets.\n";return 2;}unsigned seconds{};for(int i=2;i+1<argc;++i)if(std::wstring_view(argv[i])==L"--seconds")seconds=std::wcstoul(argv[++i],nullptr,10);if(!hid.connect(*selected,[](const auto& b){std::wcout<<sony::hexDump(b)<<L'\n';},[](auto){}))return 3;const auto deadline=std::chrono::steady_clock::now()+std::chrono::seconds(seconds);while(!stopRequested&&(!seconds||std::chrono::steady_clock::now()<deadline))std::this_thread::sleep_for(std::chrono::milliseconds(100));hid.disconnect();return 0;}
     if(command==L"bridge"){
-        std::uint16_t port=4242;unsigned seconds{};xm5::FilterConfig config;
+        std::uint16_t port=4242;unsigned seconds{};sony::FilterConfig config;
         for(int i=2;i<argc;++i){
             const std::wstring_view option=argv[i];
             if(option==L"--port"&&i+1<argc){const auto value=std::wcstoul(argv[++i],nullptr,10);if(value<1||value>65534){std::wcerr<<L"--port must be between 1 and 65534 (the JSON stream uses port+1)\n";return 1;}port=static_cast<std::uint16_t>(value);}
@@ -1733,10 +1739,10 @@ int wmain(int argc,wchar_t** argv){const std::wstring command=argc>1?argv[1]:L"g
             else if(option==L"--invert"&&i+1<argc){const std::wstring axes=argv[++i];config.axes.sign={1.0,1.0,1.0};for(const auto axis:axes){if(axis==L'x'||axis==L'X')config.axes.sign[0]=-1;if(axis==L'y'||axis==L'Y')config.axes.sign[1]=-1;if(axis==L'z'||axis==L'Z')config.axes.sign[2]=-1;}}
             else if(option==L"--axis-map"&&i+1<argc){const std::wstring map=argv[++i];if(map.size()==3){for(unsigned output=0;output<3;++output){const auto c=static_cast<wchar_t>(towlower(map[output]));config.axes.source[output]=c==L'x'?0:c==L'y'?1:2;}}}
         }
-        xm5::UdpOutput udp;if(!udp.open("127.0.0.1",port)){std::wcerr<<L"Could not open UDP output\n";return 4;}
+        sony::UdpOutput udp;if(!udp.open("127.0.0.1",port)){std::wcerr<<L"Could not open UDP output\n";return 4;}
         std::wcout<<std::format(L"Streaming head-tracking data:\n  OpenTrack doubles -> UDP 127.0.0.1:{}\n  JSON telemetry    -> UDP 127.0.0.1:{}\n(loopback only; unauthenticated -- do not forward to an untrusted network)\n",port,port+1);
-        xm5::OrientationFilter filter(config);auto selectedSensor=std::find_if(sensors.begin(),sensors.end(),[](const auto& s){return s.androidHeadTracker;});
-        auto output=[&](xm5::TrackingSample s){auto out=filter.process(std::move(s));udp.send(out);std::wcout<<std::format(L"\rYPR {:7.2f} {:7.2f} {:7.2f}  {:5.1f} pps   ",out.euler.yaw,out.euler.pitch,out.euler.roll,out.packetsPerSecond)<<std::flush;};
+        sony::OrientationFilter filter(config);auto selectedSensor=std::find_if(sensors.begin(),sensors.end(),[](const auto& s){return s.androidHeadTracker;});
+        auto output=[&](sony::TrackingSample s){auto out=filter.process(std::move(s));udp.send(out);std::wcout<<std::format(L"\rYPR {:7.2f} {:7.2f} {:7.2f}  {:5.1f} pps   ",out.euler.yaw,out.euler.pitch,out.euler.roll,out.packetsPerSecond)<<std::flush;};
         auto connect=[&]{
             if(selected!=devices.end()){
                 const auto& name=!selected->bluetoothName.empty()?selected->bluetoothName:selected->product;

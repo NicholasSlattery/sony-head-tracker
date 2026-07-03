@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in improving the XM5 Head Tracker Bridge! This is a
+Thanks for your interest in improving Sony Head Tracker for Windows! This is a
 small, single-file project, which keeps contributing simple.
 
 ## Ground rules
@@ -22,7 +22,7 @@ build.cmd
 or, from a *x64 Native Tools Command Prompt for VS*:
 
 ```bat
-cl /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE xm5_head_tracker.cpp /Fe:xm5-headtracker.exe
+cl /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE sony_head_tracker.cpp /Fe:sony-head-tracker.exe
 ```
 
 The build must be **warning-clean at `/W4`**. CI compiles every push on
@@ -30,10 +30,10 @@ The build must be **warning-clean at `/W4`**. CI compiles every push on
 
 ## Project layout
 
-Everything lives in [`xm5_head_tracker.cpp`](xm5_head_tracker.cpp), organised into
+Everything lives in [`sony_head_tracker.cpp`](sony_head_tracker.cpp), organised into
 clearly delimited sections (core types, logger, math, HID backend, Sensor API
 backend, Bluetooth recovery, orientation filter, UDP output, GUI, CLI). Keep new
-code in the section it belongs to, inside the `xm5` namespace where practical.
+code in the section it belongs to, inside the `sony` namespace where practical.
 
 ## Style
 
@@ -49,8 +49,8 @@ code in the section it belongs to, inside the `xm5` namespace where practical.
 Because this talks to real Bluetooth hardware, describe in your PR how you
 verified the change. Useful evidence:
 
-- `xm5-headtracker.exe probe` output showing the descriptor.
-- `xm5-headtracker.exe dump --seconds 5` for raw report changes.
+- `sony-head-tracker.exe probe` output showing the descriptor.
+- `sony-head-tracker.exe dump --seconds 5` for raw report changes.
 - A short screen capture of the GUI for visual changes.
 
 ## Pull requests
@@ -64,4 +64,4 @@ verified the change. Useful evidence:
 
 Open an issue using the bug report template. Bluetooth/HID behaviour varies a
 lot across firmware and Windows builds, so please include your Windows version,
-XM5 firmware version, and the relevant `probe`/log output.
+your Sony headset model and firmware version, and the relevant `probe`/log output.

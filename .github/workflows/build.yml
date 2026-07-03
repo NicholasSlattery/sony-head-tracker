@@ -28,19 +28,19 @@ jobs:
         run: |
           rc /nologo app.rc
           if errorlevel 1 exit /b 1
-          cl /nologo /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE xm5_head_tracker.cpp app.res /Fe:xm5-headtracker.exe
+          cl /nologo /std:c++latest /EHsc /permissive- /utf-8 /O2 /W4 /DUNICODE /D_UNICODE sony_head_tracker.cpp app.res /Fe:sony-head-tracker.exe
           if errorlevel 1 exit /b 1
 
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
-          name: xm5-headtracker
-          path: xm5-headtracker.exe
+          name: sony-head-tracker
+          path: sony-head-tracker.exe
           if-no-files-found: error
 
       - name: Publish release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: xm5-headtracker.exe
+          files: sony-head-tracker.exe
           generate_release_notes: true
