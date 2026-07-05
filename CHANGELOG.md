@@ -6,9 +6,55 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+## [2.0.0] - 2026-07-04
+
+### Added
+- **Simple Mode and Advanced Mode.** Simple Mode is the default for new and
+  existing configurations and focuses on connection state, Recenter, Repair
+  Tracker, Refresh, axis/inversion controls, smoothing, OpenTrack setup, large
+  yaw/pitch/roll values, packet health, and the live orientation graph. Advanced
+  Mode retains the full device list, HID details, activity log, raw packet and
+  motion readouts, connection diagnostics, and configuration/diagnostics tools.
+- **Persistent UI mode.** The selected mode is stored in the existing tolerant
+  `%LOCALAPPDATA%\SonyHeadTracker\config.json` format. Older configurations
+  remain valid and open in Simple Mode.
+- **Live smoothing value.** The toolbar now shows the current value as
+  `Smoothing: 18%` and updates it while the slider moves.
+
 ### Changed
+- **Cleaner normal-user experience.** Simple Mode replaces protocol internals
+  with concise OpenTrack and JSON destinations plus direct setup guidance. Debug
+  controls and the Tools menu are available in Advanced Mode without removing
+  any existing repair, recenter, diagnostics, import/export, or reconnect
+  functionality.
+- **More readable telemetry.** Yaw, pitch, and roll use large fixed-width values;
+  advanced gyroscope and accelerometer data use stable X/Y/Z columns with
+  consistent degrees, rad/s, and m/s² units. Samples per second, packet age, and
+  backend are easier to scan.
+- **DPI-aware GUI layout.** Fonts, spacing, controls, graph regions, minimum and
+  restored window sizes, and icons scale with the active monitor at 100%, 125%,
+  150%, and 200%. The smoothing caption is measured from its widest text instead
+  of using a clipping-prone fixed width.
+- **Simplified GUI wording.** Em dashes and en dashes were removed from all
+  GUI-visible strings, and connection/recovery guidance now uses shorter
+  sentences and separators.
 - Compatibility: **Sony ULT WEAR (WH-ULT900N)** confirmed working (community);
   promoted from Candidate to Confirmed in the README compatibility table.
+
+### Fixed
+- **Live readout flicker.** Sample processing, filtering, graph history, and UDP
+  and JSON output still run for every packet, while visible orientation and
+  motion text is coalesced to 10 Hz and raw packets to 5 Hz. Each control caches
+  its last displayed string so unchanged text does not call `SetWindowTextW`.
+- **Smoothing label clipping.** `Smoothing` is fully visible at the default size,
+  common Windows scaling levels, and after monitor-DPI changes.
+- **Unnecessary repainting.** Live samples continue invalidating only the graph
+  rectangle; the existing double-buffered window paint remains in place.
+
+### Compatibility
+- OpenTrack UDP on port 4242, JSON telemetry on port 4243, the JSON schema,
+  sensor parsing, orientation/filter/axis math, repair behavior, and device
+  compatibility behavior are unchanged.
 
 ## [1.4.0] - 2026-07-03
 
@@ -199,7 +245,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   filtering with recenter and drift correction, OpenTrack + JSON UDP output,
   diagnostics GUI, and one-click driver-only "Repair Tracker" recovery.
 
-[Unreleased]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v1.3.0...HEAD
+[Unreleased]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v2.0.0...HEAD
+[2.0.0]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v1.4.0...v2.0.0
+[1.4.0]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v1.3.0...v1.4.0
 [1.3.0]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v1.2.0...v1.3.0
 [1.2.0]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v1.1.0...v1.2.0
 [1.1.0]: https://github.com/NicholasSlattery/sony-head-tracker/compare/v1.0.0...v1.1.0

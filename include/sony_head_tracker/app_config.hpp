@@ -29,6 +29,7 @@ struct AppConfig {
     std::uint16_t udpPort{4242};
     PreferredBackend backend{PreferredBackend::automatic};
     bool showAllDevices{false};
+    bool advancedMode{false};
     WindowPlacement window{};
 };
 

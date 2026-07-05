@@ -14,6 +14,7 @@ TEST(config_round_trips_through_json) {
     c.udpPort = 5005;
     c.backend = PreferredBackend::sensor;
     c.showAllDevices = true;
+    c.advancedMode = true;
     c.window = {100, 200, 1280, 900};
 
     const auto parsed = appConfigFromJson(appConfigToJson(c));
@@ -25,6 +26,7 @@ TEST(config_round_trips_through_json) {
     CHECK(parsed.udpPort == 5005);
     CHECK(parsed.backend == PreferredBackend::sensor);
     CHECK(parsed.showAllDevices == true);
+    CHECK(parsed.advancedMode == true);
     CHECK(parsed.window.x == 100 && parsed.window.y == 200);
     CHECK(parsed.window.width == 1280 && parsed.window.height == 900);
     CHECK(parsed.window.valid());
@@ -37,6 +39,7 @@ TEST(missing_keys_keep_defaults) {
     CHECK(parsed.udpPort == def.udpPort);           // everything else default
     CHECK(parsed.axes.source == def.axes.source);
     CHECK(parsed.backend == PreferredBackend::automatic);
+    CHECK(parsed.advancedMode == false);
     CHECK(!parsed.window.valid());                  // no window persisted
 }
 

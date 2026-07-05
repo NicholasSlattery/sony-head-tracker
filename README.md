@@ -321,7 +321,8 @@ sony-head-tracker.exe help | version
 
 ## The GUI
 
-Launch with no arguments. The window is organised top to bottom:
+Launch with no arguments. The window opens in **Simple Mode** by default. Use the
+mode button at the upper right to switch views:
 
 - **Header band** with the app icon, title, version, an **Unofficial** tag, and a
   live status line: green *"Tracking <headset>"* while connected, or amber
@@ -329,32 +330,27 @@ Launch with no arguments. The window is organised top to bottom:
   see nothing, press Repair Tracker (it needs one administrator approval)**. If
   AirPods are your only paired headphones, it says so and explains why they can't
   work.
-- **Toolbar** with **Refresh** (re-enumerate and reconnect), **Repair Tracker**
+- **Shared controls** in both modes include **Refresh** (re-enumerate and reconnect), **Repair Tracker**
   (one-click recovery, marked with the Windows UAC shield because it asks for a
   single administrator prompt), **Recenter** (set the current pose as forward;
   global hotkey **Ctrl+Alt+C**), and live axis tuning: axis order, Invert X/Y/Z,
-  and a clearly labelled **Smoothing** slider (defaults to YXZ plus invert X and
-  Z).
-- **Devices** lists head-tracker candidates by default, by their Bluetooth name
-  (`✔ WH-1000XM5 - Android head tracker`). Tick **Show all devices** to inspect
-  every HID collection Windows exposes. When the list is empty it says exactly
-  what to do next.
-- **Details and activity log** with full descriptor detail for the selection plus
-  the discovery and permission log. It shows step-by-step recovery guidance when
-  no tracker is visible.
-- **Output panel** that spells out where the data goes: OpenTrack doubles on
-  `UDP 127.0.0.1:4242`, JSON telemetry on `4243`, loopback only. No guessing.
+  and a DPI-aware **Smoothing** slider with its live percentage (defaults to YXZ
+  plus invert X and Z).
+- **Simple Mode** shows concise OpenTrack setup help, large yaw/pitch/roll values,
+  samples per second, packet age, backend, and the live orientation graph. It
+  hides device paths, raw packets, protocol internals, and long logs.
+- **Advanced Mode** adds the device list, **Show all devices**, descriptor and
+  activity details, raw packet and motion readouts, full connection health, and
+  the **Tools** menu for diagnostics and configuration import/export.
+- **Output panel** shows OpenTrack on `UDP 127.0.0.1:4242` and JSON telemetry on
+  `4243`. Simple Mode gives only the setup instruction; Advanced Mode adds the
+  technical destination details.
 - **Live orientation graph**, flicker-free (double-buffered) yaw/pitch/roll with a
-  degree grid and a legend showing the current values, plus raw-packet and
-  gyroscope/accelerometer readouts above it.
-- **Connection-health line** below the readouts: samples/second, time since the
-  last packet, active backend, whether angular velocity is present, UDP packets
-  sent and destination port, reconnection attempts, sensor data age, and a flag
-  when a non-default axis mapping is active.
-- **Tools menu** for *Reconnect now*, *Reset settings to defaults*, importing and
-  exporting configuration, and exporting a redacted diagnostics bundle.
+  degree grid and a legend showing the current values in both modes. Visible
+  readouts use fixed-width values and refresh at a comfortable visual rate while
+  every sample is still streamed.
 
-Settings (axis mapping, inversion, smoothing, port, and window placement) are saved
+Settings (axis mapping, inversion, smoothing, port, UI mode, and window placement) are saved
 to `%LOCALAPPDATA%\SonyHeadTracker\config.json` and restored on the next launch. If
 the headset drops (sleep, output-device change, phone reconnect), the app
 reconnects on its own with an increasing back-off (1, 2, 5, 10, 30 s); **Refresh**

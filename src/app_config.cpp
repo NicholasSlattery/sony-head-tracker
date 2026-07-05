@@ -91,11 +91,12 @@ std::string appConfigToJson(const AppConfig& c) {
         "  \"udpPort\": {},\n"
         "  \"backend\": \"{}\",\n"
         "  \"showAllDevices\": {},\n"
+        "  \"advancedMode\": {},\n"
         "  \"windowX\": {}, \"windowY\": {}, \"windowWidth\": {}, \"windowHeight\": {}\n"
         "}}\n",
         c.axes.source[0], c.axes.source[1], c.axes.source[2],
         c.axes.sign[0], c.axes.sign[1], c.axes.sign[2],
-        c.smoothing, c.udpPort, backend, c.showAllDevices ? "true" : "false",
+        c.smoothing, c.udpPort, backend, c.showAllDevices ? "true" : "false", c.advancedMode ? "true" : "false",
         c.window.x, c.window.y, c.window.width, c.window.height);
 }
 
@@ -113,6 +114,7 @@ AppConfig appConfigFromJson(std::string_view j) {
         c.backend = *s == "hid" ? PreferredBackend::hid : *s == "sensor" ? PreferredBackend::sensor : PreferredBackend::automatic;
     }
     if (const auto b = findBool(j, "\"showAllDevices\"")) c.showAllDevices = *b;
+    if (const auto b = findBool(j, "\"advancedMode\"")) c.advancedMode = *b;
     if (const auto n = findNumber(j, "\"windowX\"")) c.window.x = static_cast<int>(*n);
     if (const auto n = findNumber(j, "\"windowY\"")) c.window.y = static_cast<int>(*n);
     if (const auto n = findNumber(j, "\"windowWidth\"")) c.window.width = static_cast<int>(*n);
