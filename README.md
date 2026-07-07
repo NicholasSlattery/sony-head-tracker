@@ -43,6 +43,7 @@ and the same bridge now works across the wider Sony range.
 ## Featured in
 
 - [Tom's Hardware — You can now use your Sony headphones as a free real-time head tracker for race and flight simulators on PC](https://www.tomshardware.com/video-games/pc-gaming/you-can-now-use-your-sony-headphones-as-a-real-time-head-tracker-for-race-and-flight-simulators-on-pc-several-hundred-games-already-supported-enthusiast-creates-open-source-app-that-translates-live-sensor-data-into-in-game-camera-controls)
+- [Hackaday — Flight Sim Tracking From Spatial Audio](https://hackaday.com/2026/07/06/flight-sim-tracking-from-spatial-audio/)
 - [SoundGuys — This free app turns Sony WH-1000XM5 into head trackers for PC gaming](https://www.soundguys.com/sony-headphones-windows-head-tracking-159435/)
 
 ## Quick start
