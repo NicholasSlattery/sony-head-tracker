@@ -1,15 +1,16 @@
-# Sony Head Tracker for Windows
+# Sony Head Tracker
 
 Use the motion sensors already inside compatible Sony headphones and earbuds as
-a real-time head tracker on Windows.
+a real-time head tracker on Windows or macOS.
 
 [![Build](https://github.com/NicholasSlattery/sony-head-tracker/actions/workflows/build.yml/badge.svg)](https://github.com/NicholasSlattery/sony-head-tracker/actions/workflows/build.yml)
 [![Latest release](https://img.shields.io/github/v/release/NicholasSlattery/sony-head-tracker)](https://github.com/NicholasSlattery/sony-head-tracker/releases/latest)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![Platform: Windows 11](https://img.shields.io/badge/platform-Windows%2011-0078D6.svg)](#build)
+[![Platform: macOS 14+](https://img.shields.io/badge/platform-macOS%2014%2B-000000.svg)](docs/MACOS.md)
 [![Language: C++20](https://img.shields.io/badge/C%2B%2B-20-00599C.svg)](#build)
 [![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-support-yellow?style=for-the-badge)](https://buymeacoffee.com/nicholasslattery)
-> **Unofficial** open-source Windows bridge. Not affiliated with or endorsed by
+> **Unofficial** open-source bridge. Not affiliated with or endorsed by
 > Sony.
 
 https://github.com/user-attachments/assets/851e4ff7-3134-45e9-90b4-a0fa42258730
@@ -37,7 +38,7 @@ and the same bridge now works across the wider Sony range.
   simulators.
 - Send live yaw, pitch, and roll to OpenTrack.
 - Read orientation, quaternion, and gyroscope data through a local JSON stream.
-- Inspect sensor activity through the included Windows diagnostics interface.
+- Inspect sensor activity through the included native diagnostics interfaces.
 - Test additional Sony models with the read-only compatibility probe.
 
 ## Featured in
@@ -52,6 +53,8 @@ and the same bridge now works across the wider Sony range.
 
 
 ## Quick start
+
+### Windows 11
 
 1. Download `sony-head-tracker.exe` from the
    [latest release](https://github.com/NicholasSlattery/sony-head-tracker/releases/latest)
@@ -74,14 +77,40 @@ and the same bridge now works across the wider Sony range.
    [`docs/PROTOCOL.md`](docs/PROTOCOL.md).
 7. Press **Recenter** (or Ctrl+Alt+C) while facing forward.
 
-> **Hardware status:** changing orientation reports have been received and parsed
-> from a physical WH-1000XM5. Behaviour varies with Sony firmware and the Windows
-> Bluetooth stack. This project never spoofs another headset, changes Bluetooth
-> identities, or modifies firmware.
+### macOS 14 or later
+
+The macOS port includes a native SwiftUI application and a command-line bridge.
+It discovers devices by the Android Head Tracker HID descriptor instead of by
+model name, VID/PID, report ID, or report length.
+
+```bash
+cmake -S . -B build/macos -DCMAKE_BUILD_TYPE=Release
+cmake --build build/macos --target sony-head-tracker-macos --parallel
+./build/macos/sony-head-tracker-macos bridge
+```
+
+For the native application, run the repository script. Regenerate the committed
+Xcode project first only after changing `macos/project.yml`:
+
+```bash
+# Optional after project.yml changes: (cd macos && xcodegen generate)
+./script/build_and_run.sh
+```
+
+On first use, allow Sony Head Tracker under **System Settings > Privacy &
+Security > Input Monitoring**. See the complete setup, device-support status,
+ULT WEAR audio activation note, and troubleshooting steps in
+[`docs/MACOS.md`](docs/MACOS.md).
+
+> **Hardware status:** changing orientation reports have been received from a
+> physical WH-1000XM5 on Windows and a physical ULT WEAR on macOS. Behaviour
+> varies with Sony firmware and the platform Bluetooth stack. This project never
+> spoofs another headset, changes Bluetooth identities, or modifies firmware.
 
 ## Contents
 
 - [Quick start](#quick-start)
+- [macOS guide](docs/MACOS.md)
 - [Compatibility](#compatibility)
 - [Where the data goes (ports)](#where-the-data-goes-ports)
 - [Gyroscope and accelerometer](#gyroscope-and-accelerometer)
@@ -111,8 +140,9 @@ the same protocol.
 **You can check any device in seconds, with zero risk.** Pair the headphones,
 then run:
 
-```bat
-sony-head-tracker.exe probe
+```text
+Windows: sony-head-tracker.exe probe
+macOS:   ./build/macos/sony-head-tracker-macos probe
 ```
 
 `probe` is read-only. It never writes to the device, changes drivers, or touches
@@ -121,7 +151,7 @@ and exits `0`. If not, it lists what it saw and exits `2`.
 
 Reports for both working and non-working devices are welcome. Please
 [open an issue](https://github.com/NicholasSlattery/sony-head-tracker/issues/new/choose)
-with the `probe` output and your Windows and firmware versions, and the table
+with the `probe` output and your platform, OS, and firmware versions, and the table
 below will be updated.
 
 ### Confirmed
@@ -133,6 +163,13 @@ below will be updated.
 | Sony WH-1000XM6 | community confirmed |
 | Sony WF-1000XM6 | community confirmed |
 | Sony ULT WEAR (WH-ULT900N) | community confirmed |
+
+The table above records project-wide compatibility, primarily from the existing
+Windows implementation. The macOS backend uses the same descriptor-defined
+Android Head Tracker protocol and is not restricted to ULT WEAR. **ULT WEAR is
+the current macOS hardware-validated model; XM5/XM6 and other entries still need
+macOS community confirmation.** See [`docs/MACOS.md`](docs/MACOS.md) for the
+platform-specific test status.
 
 ### Candidate
 
@@ -259,6 +296,27 @@ all streams share one coordinate frame.
 
 ## Build
 
+### macOS
+
+The macOS CLI and tests require full Xcode with a C++20 compiler and CMake 3.25
+or later. The SwiftUI Xcode project is committed; XcodeGen is required only when
+regenerating it from `macos/project.yml`.
+
+```bash
+cmake -S . -B build/macos -DCMAKE_BUILD_TYPE=Release
+cmake --build build/macos --parallel
+ctest --test-dir build/macos --output-on-failure
+
+# Optional after project.yml changes: (cd macos && xcodegen generate)
+./script/build_and_run.sh
+```
+
+The app targets macOS 14 or later. Detailed permissions, CLI usage, build
+variants, device recovery, and ULT WEAR's silent A2DP keepalive are documented in
+[`docs/MACOS.md`](docs/MACOS.md).
+
+### Windows
+
 Requires a C++20-capable MSVC and a current Windows 11 SDK (install **Desktop
 development with C++** in the Visual Studio Installer).
 
@@ -292,6 +350,9 @@ warning-clean at `/W4`. Every push is built and unit-tested in CI on
 See [`.github/workflows/build.yml`](.github/workflows/build.yml).
 
 ## Pair the headphones
+
+The following pairing, command, GUI, and repair sections describe Windows. For
+macOS, use [`docs/MACOS.md`](docs/MACOS.md).
 
 1. Update the headset with Sony's app and enable its spatial-audio or
    head-tracking feature if available, then put the headset in pairing mode.

@@ -4,12 +4,12 @@
 #include "sony_head_tracker/app_config.hpp"
 
 #include <algorithm>
-#include <charconv>
 #include <format>
+#include <locale>
 #include <optional>
+#include <sstream>
 #include <string>
 #include <string_view>
-#include <system_error>
 #include <vector>
 
 namespace sony {
@@ -31,9 +31,10 @@ std::string_view valueAfterKey(std::string_view j, std::string_view quotedKey) {
 std::optional<double> findNumber(std::string_view j, std::string_view key) {
     const auto v = valueAfterKey(j, key);
     if (v.empty()) return std::nullopt;
+    std::istringstream stream{std::string(v)};
+    stream.imbue(std::locale::classic());
     double out{};
-    const auto r = std::from_chars(v.data(), v.data() + v.size(), out);
-    if (r.ec != std::errc{}) return std::nullopt;
+    if (!(stream >> out)) return std::nullopt;
     return out;
 }
 
@@ -61,15 +62,16 @@ std::vector<double> findNumberArray(std::string_view j, std::string_view key) {
     std::vector<double> out;
     const auto v = valueAfterKey(j, key);
     if (v.empty() || v.front() != '[') return out;
-    std::size_t i = 1;
-    while (i < v.size() && v[i] != ']') {
-        while (i < v.size() && (v[i] == ' ' || v[i] == ',' || v[i] == '\t' || v[i] == '\n' || v[i] == '\r')) ++i;
-        if (i >= v.size() || v[i] == ']') break;
+    std::istringstream stream{std::string(v.substr(1))};
+    stream.imbue(std::locale::classic());
+    while (stream) {
+        stream >> std::ws;
+        if (stream.peek() == ']') break;
         double num{};
-        const auto r = std::from_chars(v.data() + i, v.data() + v.size(), num);
-        if (r.ec != std::errc{}) break;
+        if (!(stream >> num)) break;
         out.push_back(num);
-        i = static_cast<std::size_t>(r.ptr - v.data());
+        stream >> std::ws;
+        if (stream.peek() == ',') stream.get();
     }
     return out;
 }

@@ -1,0 +1,83 @@
+name: SonyHeadTracker
+
+options:
+  deploymentTarget:
+    macOS: "14.0"
+  createIntermediateGroups: true
+
+configs:
+  Debug: debug
+  Release: release
+
+targets:
+  SonyHeadTracker:
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: App
+      - path: Bridge
+      - path: Resources
+      - path: ../src/math.cpp
+      - path: ../src/orientation.cpp
+      - path: ../src/protocol.cpp
+      - path: ../src/hid_descriptor.cpp
+      - path: ../src/app_config.cpp
+      - path: ../src/diagnostics.cpp
+      - path: ../src/macos/audio_wake_macos.cpp
+      - path: ../src/macos/bluetooth_recovery_macos.mm
+      - path: ../src/macos/hid_backend_macos.cpp
+      - path: ../src/macos/output_udp_posix.cpp
+      - path: ../src/macos/logger_macos.cpp
+      - path: ../src/macos/app_config_store_macos.cpp
+    dependencies:
+      - sdk: ApplicationServices.framework
+      - sdk: AudioToolbox.framework
+      - sdk: AudioUnit.framework
+      - sdk: CoreAudio.framework
+      - sdk: CoreFoundation.framework
+      - sdk: CoreGraphics.framework
+      - sdk: Foundation.framework
+      - sdk: IOBluetooth.framework
+      - sdk: IOKit.framework
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: io.github.NicholasSlattery.SonyHeadTracker
+        PRODUCT_NAME: SonyHeadTracker
+        SWIFT_VERSION: "6.0"
+        CLANG_CXX_LANGUAGE_STANDARD: c++20
+        CLANG_CXX_LIBRARY: libc++
+        CLANG_ENABLE_OBJC_ARC: NO
+        HEADER_SEARCH_PATHS:
+          - "$(PROJECT_DIR)/../include"
+          - "$(PROJECT_DIR)/Bridge"
+        SWIFT_OBJC_BRIDGING_HEADER: "$(PROJECT_DIR)/Bridge/SonyHeadTracker-Bridging-Header.h"
+        MARKETING_VERSION: "1.0.0"
+        CURRENT_PROJECT_VERSION: "1"
+        CODE_SIGN_STYLE: Automatic
+      configs:
+        Debug:
+          ENABLE_HARDENED_RUNTIME: NO
+        Release:
+          ENABLE_HARDENED_RUNTIME: YES
+    info:
+      path: Info.plist
+      properties:
+        CFBundleDisplayName: Sony Head Tracker
+        CFBundleName: SonyHeadTracker
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSMinimumSystemVersion: "$(MACOSX_DEPLOYMENT_TARGET)"
+        NSPrincipalClass: NSApplication
+        NSBluetoothAlwaysUsageDescription: Reads motion data from a paired compatible headset and restores its HID service after a power cycle.
+        NSHumanReadableCopyright: Uses MIT-licensed Sony Head Tracker components; unofficial and not affiliated with or endorsed by Sony.
+
+schemes:
+  SonyHeadTracker:
+    build:
+      targets:
+        SonyHeadTracker: all
+    run:
+      config: Debug
+    archive:
+      config: Release

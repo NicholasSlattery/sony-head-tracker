@@ -6,6 +6,36 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Native macOS 14+ support with a descriptor-driven IOHID backend, POSIX
+  loopback UDP output, a command-line bridge, and a SwiftUI application.
+- A small C ABI around the shared C++ tracking engine so SwiftUI and the CLI use
+  the same parsing, filtering, recentering, and protocol serialization.
+- Redacted shareable macOS diagnostics and explicit permission, visibility,
+  marker-verification, feature-write, stream-timeout, and UDP error categories.
+- Persistent macOS axis mapping, inversion, smoothing, and UDP port settings
+  under the user's Application Support directory.
+- Address-scoped recovery for the previously verified paired headset after a
+  Bluetooth power cycle. Recovery uses public IOBluetooth connection and SDP
+  APIs and never scans, pairs, forgets, or modifies another device.
+- A zero-filled Core Audio A2DP keepalive for headsets that expose the tracker
+  only while their Bluetooth audio path is active. This behavior is required by
+  the tested ULT WEAR and remains active only for the tracking session.
+- macOS core/C API tests in GitHub Actions while retaining the existing Windows
+  build, tests, and release jobs.
+
+### Changed
+- Portable floating-point configuration parsing now uses a classic-locale
+  stream instead of libc++ floating-point `from_chars`, preserving the macOS 14
+  deployment target.
+
+### Compatibility
+- ULT WEAR is hardware-validated on macOS with changing orientation data and
+  both UDP outputs. The macOS discovery and report parsing remain protocol-based:
+  they do not hardcode Sony model names, VID/PID values, report IDs, report
+  lengths, or feature bytes. XM5, XM6, and other compatible models therefore use
+  the same path but still require model-specific macOS community confirmation.
+
 ## [2.1.0] - 2026-07-09
 
 Performance release. The per-packet hot path and the GUI were made faster and

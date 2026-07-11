@@ -25,7 +25,7 @@ call "%VSPATH%\VC\Auxiliary\Build\vcvars64.bat" >nul
 if not exist build md build
 cl /nologo /std:c++latest /EHsc /permissive- /utf-8 /W4 /I include /I tests /Fobuild\ ^
    src\math.cpp src\hid_descriptor.cpp src\orientation.cpp src\protocol.cpp src\app_config.cpp src\diagnostics.cpp ^
-   tests\test_main.cpp tests\math_tests.cpp tests\descriptor_tests.cpp tests\orientation_tests.cpp tests\protocol_tests.cpp tests\config_tests.cpp tests\diagnostics_tests.cpp ^
+   tests\test_main.cpp tests\math_tests.cpp tests\macos_support_tests.cpp tests\descriptor_tests.cpp tests\orientation_tests.cpp tests\protocol_tests.cpp tests\config_tests.cpp tests\diagnostics_tests.cpp ^
    /Fe:run-tests.exe
 if not %errorlevel%==0 (
   echo.

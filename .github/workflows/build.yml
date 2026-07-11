@@ -2,7 +2,7 @@ name: Build
 
 on:
   push:
-    branches: [main]
+    branches: [main, macos-support]
     tags: ["v*"]
   pull_request:
   workflow_dispatch:
@@ -12,6 +12,32 @@ permissions:
   contents: read
 
 jobs:
+  macos-core:
+    name: Build & test core (macOS)
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure
+        run: cmake -S . -B build/macos -DCMAKE_BUILD_TYPE=Release
+
+      - name: Build tests
+        run: cmake --build build/macos --target sony_head_tracker_tests sony_head_tracker_c_api_tests --parallel
+
+      - name: Test
+        run: ctest --test-dir build/macos --output-on-failure
+
+      - name: Build macOS CLI
+        run: cmake --build build/macos --target sony-head-tracker-macos --parallel
+
+      - name: Build macOS app without signing
+        run: >-
+          xcodebuild -project macos/SonyHeadTracker.xcodeproj
+          -scheme SonyHeadTracker -configuration Debug
+          -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO build
+
   build:
     name: Build & test (MSVC x64)
     runs-on: windows-latest
