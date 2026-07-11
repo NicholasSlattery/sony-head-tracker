@@ -76,6 +76,30 @@ a Bluetooth usage description because its recovery path uses public IOBluetooth
 APIs to reconnect the same previously verified paired headset and refresh its SDP
 services after a power cycle.
 
+### Keeping Input Monitoring permission across local rebuilds
+
+An ad-hoc signed Debug build has a designated requirement based on that build's
+code hash. macOS can therefore treat the next build as a different executable
+even though System Settings still shows an older `SonyHeadTracker` entry as
+enabled. The committed `build_and_run.sh` avoids that when possible: after Xcode
+builds the app, it detects exactly one valid Apple Development identity in the
+login keychain and re-signs the bundle with that stable identity before launch.
+No certificate name, hash, Team ID, or account information is stored in the
+repository.
+
+If more than one Apple Development identity is installed, choose one explicitly:
+
+```bash
+SHT_CODE_SIGN_IDENTITY="certificate SHA-1 hash or exact name" \
+  ./script/build_and_run.sh
+```
+
+Set `SHT_SKIP_STABLE_SIGNING=1` to retain Xcode's local ad-hoc signature. When no
+suitable identity exists, rebuilding can require removing the stale App entry
+from Input Monitoring, adding the newly built App, enabling it, and restarting
+the App. Building directly in Xcode can instead use a development team selected
+under the target's Signing & Capabilities settings.
+
 The first macOS version intentionally does not enable App Sandbox while the
 IOHID hardware path is being validated. UDP output is restricted to loopback.
 
@@ -123,7 +147,8 @@ The Xcode project is committed and can be built directly. After changing
 ```
 
 The build script uses a stable DerivedData directory under `build/DerivedData`,
-builds the Debug app, and launches a new instance. It accepts `--debug`, `--logs`,
+builds the Debug app, applies a stable local development signature when one is
+available, and launches a new instance. It accepts `--debug`, `--logs`,
 `--telemetry`, and `--verify` for development diagnostics.
 
 The app displays connection state, the selected device, yaw/pitch/roll,

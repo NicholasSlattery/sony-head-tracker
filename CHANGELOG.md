@@ -27,6 +27,8 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 ### Changed
 - The macOS App now recycles a stalled IOHID session and escalates paired-headset
   recovery when no valid sample arrives after a power cycle.
+- The macOS build/run script now uses a unique local Apple Development identity,
+  when available, so Input Monitoring permission survives local rebuilds.
 - Portable floating-point configuration parsing now uses a classic-locale
   stream instead of libc++ floating-point `from_chars`, preserving the macOS 14
   deployment target.
