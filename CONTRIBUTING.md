@@ -1,6 +1,6 @@
 # Contributing
 
-Thanks for your interest in improving Sony Head Tracker for Windows! It's a small
+Thanks for your interest in improving Sony Head Tracker! It's a small
 project with a hardware-independent core, so most changes are easy to make and to
 test without a headset.
 
@@ -8,10 +8,30 @@ test without a headset.
 
 - Be respectful — see the [Code of Conduct](CODE_OF_CONDUCT.md).
 - This project **never** spoofs another device, changes Bluetooth identities, or
-  modifies headset firmware. Recovery is limited to read-only diagnostics and
-  binding to Microsoft's inbox drivers. PRs that cross that line won't be merged.
+  modifies headset firmware. Windows recovery is limited to read-only diagnostics
+  and Microsoft's inbox drivers; macOS recovery is limited to the same previously
+  verified paired headset through public IOBluetooth APIs. PRs that cross that
+  line won't be merged.
 
 ## Building
+
+### macOS
+
+The macOS port requires full Xcode and CMake 3.25 or later:
+
+```bash
+cmake -S . -B build/macos -DCMAKE_BUILD_TYPE=Debug
+cmake --build build/macos --parallel
+ctest --test-dir build/macos --output-on-failure
+./script/build_and_run.sh
+```
+
+The committed Xcode project is generated from `macos/project.yml`. Run
+`(cd macos && xcodegen generate)` after changing that specification. Hardware
+setup, permissions, CLI commands, and validation are in
+[`docs/MACOS.md`](docs/MACOS.md).
+
+### Windows
 
 You need a C++20-capable MSVC and a current Windows 11 SDK (install **Desktop
 development with C++** in the Visual Studio Installer).

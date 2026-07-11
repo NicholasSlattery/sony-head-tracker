@@ -8,6 +8,8 @@
 *.lib
 build/
 out/
+dist/
+artifacts/
 
 # Visual Studio / editor
 .vs/
@@ -15,6 +17,7 @@ out/
 *.suo
 *.vcxproj*
 CMakeSettings.json
+.DS_Store
 
 # Local tooling
 .claude/

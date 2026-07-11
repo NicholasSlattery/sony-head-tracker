@@ -22,6 +22,9 @@ class HidBackend {
 public:
     using RawCallback = std::function<void(const std::vector<std::uint8_t>&)>;
     using SampleCallback = std::function<void(MotionSample)>;
+    // Opaque platform state. Public only so platform translation-unit helpers
+    // can name the incomplete type; callers cannot inspect its definition.
+    struct Context;
 
     HidBackend();
     ~HidBackend();
@@ -31,7 +34,6 @@ public:
     [[nodiscard]] bool connected() const { return running_; }
 
 private:
-    struct Context;
     std::unique_ptr<Context> context_;
     std::jthread reader_;
     std::atomic_bool running_{};

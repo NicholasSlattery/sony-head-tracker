@@ -1,0 +1,514 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		03596DCC34136684D5CB4A84 /* logger_macos.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 0BAD2732D11F1AE2FF4EFC15 /* logger_macos.cpp */; };
+		081E8AD5523E266E16B5828D /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = DB7304492BEA2C9800502C22 /* CoreGraphics.framework */; };
+		0959063305D822A6F1843FD0 /* sony-head-tracker-LICENSE.txt in Resources */ = {isa = PBXBuildFile; fileRef = 7E350879E0DE9F9CCD9512BD /* sony-head-tracker-LICENSE.txt */; };
+		0B51999772C3E23AE86657B0 /* ConnectionHeaderView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 57ECFF6A3BEA62099BC6C526 /* ConnectionHeaderView.swift */; };
+		0B87475B9FB3894D26E3C2DF /* OrientationReadoutView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 85AB0BDDF50C2CB193F2672A /* OrientationReadoutView.swift */; };
+		29C7931EA0B75ADE6D7A17AF /* sony_head_tracker_c.mm in Sources */ = {isa = PBXBuildFile; fileRef = 536E749A3BD2434574B0FBED /* sony_head_tracker_c.mm */; };
+		2A4BB2B630C2D4E405DBC43B /* math.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 077319700403B822B8DB2AE0 /* math.cpp */; };
+		3033BF10A56BA010D172AB37 /* hid_backend_macos.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 8B47D2F79E1B1E590F762079 /* hid_backend_macos.cpp */; };
+		385D4634CF329EC910DF4661 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BB6D69A88980345D0973074 /* ContentView.swift */; };
+		3901A2D654090962785DC47C /* SonyHeadTrackerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8619A5D4EB161FB47852E08F /* SonyHeadTrackerApp.swift */; };
+		3977F6F65634D6A75BEBCF7E /* app_config_store_macos.cpp in Sources */ = {isa = PBXBuildFile; fileRef = F40F5A329A1248331A020DB8 /* app_config_store_macos.cpp */; };
+		39F257234558CA5B82951973 /* IOBluetooth.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = D5DA244F1CAAFA4A50F68EF9 /* IOBluetooth.framework */; };
+		436FBCD56024260E308BE1FD /* ApplicationServices.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 506A672646D0CB67100CC980 /* ApplicationServices.framework */; };
+		501E1CC54596EDB911AB6D5C /* diagnostics.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 98A5EA1C9E01F022AFB03AC3 /* diagnostics.cpp */; };
+		5E0ED9E187D13A86EDC28E70 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EE6C9FDE4C86168B6C012A43 /* SettingsView.swift */; };
+		66C62216D562DDA0B0A63DFF /* CoreFoundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = F963E308D0F58EB754403012 /* CoreFoundation.framework */; };
+		6D725E5FC929794D20F8BDD1 /* TrackerModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = C80C44B2C03987C9BCDBF11C /* TrackerModel.swift */; };
+		6E362FB3E70CDB105E05B2E3 /* protocol.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 763F1C9BC372FEA90A1AC090 /* protocol.cpp */; };
+		6F2791B86DF2CF1090F0C9E5 /* orientation.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D5C62FF3A911EED1981974FF /* orientation.cpp */; };
+		84889FCE31EB32F16FA29D39 /* DeviceInspectorView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 61712B65784595D9A8EC1939 /* DeviceInspectorView.swift */; };
+		8E6C4D11BD5D15DF18D34BEB /* app_config.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 549781900B7CA60A77EDB1A7 /* app_config.cpp */; };
+		8EA17421A35AF95415C58558 /* AudioUnit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = CA69B4B0E56B92A4B43B0A57 /* AudioUnit.framework */; };
+		94320DF0303172B266164C2D /* ThirdPartyLicensesView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 755A30628F3220CAF8A88E9E /* ThirdPartyLicensesView.swift */; };
+		95144D41D03A9844A06E2330 /* bluetooth_recovery_macos.mm in Sources */ = {isa = PBXBuildFile; fileRef = 78EB3292059146F2A0273000 /* bluetooth_recovery_macos.mm */; };
+		963E53FE2F8246AA21D801AC /* audio_wake_macos.cpp in Sources */ = {isa = PBXBuildFile; fileRef = D40B4A35F4C3E3C44811D1DA /* audio_wake_macos.cpp */; };
+		BCAA55F6DC4DF4E9E1DDC62D /* TelemetryGraphView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 660B695BC8FC1213EE604D00 /* TelemetryGraphView.swift */; };
+		C9D1AF198C9CCE6E05C9B90B /* output_udp_posix.cpp in Sources */ = {isa = PBXBuildFile; fileRef = B618EA34A612431C2F5FA1B9 /* output_udp_posix.cpp */; };
+		CA838837E9F0DB12F8598570 /* OutputStatusView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C78FFBC579ED5EBDB86536E6 /* OutputStatusView.swift */; };
+		CF7BD8092ABC63A9A444B050 /* CoreAudio.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 64680560E8318135696DA8DB /* CoreAudio.framework */; };
+		D163400422464C7479F5826D /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 158AE709B7596E412F48EF5C /* Foundation.framework */; };
+		E0F2D8256E46F369FCF8C016 /* IOKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 0B9159787B5CFAB48E69DEE7 /* IOKit.framework */; };
+		ED496D6D9E310E4C156BC992 /* AudioToolbox.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 3191103EC508B2981515C6F0 /* AudioToolbox.framework */; };
+		FD36DA6D0527D56D31AE91D5 /* hid_descriptor.cpp in Sources */ = {isa = PBXBuildFile; fileRef = 1BA4E319390C07F0F6DE49E1 /* hid_descriptor.cpp */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		077319700403B822B8DB2AE0 /* math.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = math.cpp; sourceTree = "<group>"; };
+		0B9159787B5CFAB48E69DEE7 /* IOKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOKit.framework; path = System/Library/Frameworks/IOKit.framework; sourceTree = SDKROOT; };
+		0BAD2732D11F1AE2FF4EFC15 /* logger_macos.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = logger_macos.cpp; sourceTree = "<group>"; };
+		0C60018A336232672ECB4A6E /* SonyHeadTracker-Bridging-Header.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = "SonyHeadTracker-Bridging-Header.h"; sourceTree = "<group>"; };
+		158AE709B7596E412F48EF5C /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
+		1BA4E319390C07F0F6DE49E1 /* hid_descriptor.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = hid_descriptor.cpp; sourceTree = "<group>"; };
+		2BB6D69A88980345D0973074 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		3191103EC508B2981515C6F0 /* AudioToolbox.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioToolbox.framework; path = System/Library/Frameworks/AudioToolbox.framework; sourceTree = SDKROOT; };
+		506A672646D0CB67100CC980 /* ApplicationServices.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = ApplicationServices.framework; path = System/Library/Frameworks/ApplicationServices.framework; sourceTree = SDKROOT; };
+		536E749A3BD2434574B0FBED /* sony_head_tracker_c.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = sony_head_tracker_c.mm; sourceTree = "<group>"; };
+		549781900B7CA60A77EDB1A7 /* app_config.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = app_config.cpp; sourceTree = "<group>"; };
+		57ECFF6A3BEA62099BC6C526 /* ConnectionHeaderView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ConnectionHeaderView.swift; sourceTree = "<group>"; };
+		61712B65784595D9A8EC1939 /* DeviceInspectorView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceInspectorView.swift; sourceTree = "<group>"; };
+		64680560E8318135696DA8DB /* CoreAudio.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreAudio.framework; path = System/Library/Frameworks/CoreAudio.framework; sourceTree = SDKROOT; };
+		660B695BC8FC1213EE604D00 /* TelemetryGraphView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TelemetryGraphView.swift; sourceTree = "<group>"; };
+		755A30628F3220CAF8A88E9E /* ThirdPartyLicensesView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ThirdPartyLicensesView.swift; sourceTree = "<group>"; };
+		763F1C9BC372FEA90A1AC090 /* protocol.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = protocol.cpp; sourceTree = "<group>"; };
+		78EB3292059146F2A0273000 /* bluetooth_recovery_macos.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = bluetooth_recovery_macos.mm; sourceTree = "<group>"; };
+		7B02E31ADB0CE9BFAF975FF1 /* sony_head_tracker_c.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = sony_head_tracker_c.h; sourceTree = "<group>"; };
+		7E350879E0DE9F9CCD9512BD /* sony-head-tracker-LICENSE.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "sony-head-tracker-LICENSE.txt"; sourceTree = "<group>"; };
+		85AB0BDDF50C2CB193F2672A /* OrientationReadoutView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OrientationReadoutView.swift; sourceTree = "<group>"; };
+		8619A5D4EB161FB47852E08F /* SonyHeadTrackerApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SonyHeadTrackerApp.swift; sourceTree = "<group>"; };
+		8B47D2F79E1B1E590F762079 /* hid_backend_macos.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = hid_backend_macos.cpp; sourceTree = "<group>"; };
+		98A5EA1C9E01F022AFB03AC3 /* diagnostics.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = diagnostics.cpp; sourceTree = "<group>"; };
+		B618EA34A612431C2F5FA1B9 /* output_udp_posix.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = output_udp_posix.cpp; sourceTree = "<group>"; };
+		C78FFBC579ED5EBDB86536E6 /* OutputStatusView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OutputStatusView.swift; sourceTree = "<group>"; };
+		C79DB4590B76CCDF6E061447 /* SonyHeadTracker.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = SonyHeadTracker.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C80C44B2C03987C9BCDBF11C /* TrackerModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TrackerModel.swift; sourceTree = "<group>"; };
+		CA69B4B0E56B92A4B43B0A57 /* AudioUnit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = AudioUnit.framework; path = System/Library/Frameworks/AudioUnit.framework; sourceTree = SDKROOT; };
+		D40B4A35F4C3E3C44811D1DA /* audio_wake_macos.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = audio_wake_macos.cpp; sourceTree = "<group>"; };
+		D5C62FF3A911EED1981974FF /* orientation.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = orientation.cpp; sourceTree = "<group>"; };
+		D5DA244F1CAAFA4A50F68EF9 /* IOBluetooth.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = IOBluetooth.framework; path = System/Library/Frameworks/IOBluetooth.framework; sourceTree = SDKROOT; };
+		DB7304492BEA2C9800502C22 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
+		EE6C9FDE4C86168B6C012A43 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		F40F5A329A1248331A020DB8 /* app_config_store_macos.cpp */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.cpp; path = app_config_store_macos.cpp; sourceTree = "<group>"; };
+		F963E308D0F58EB754403012 /* CoreFoundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreFoundation.framework; path = System/Library/Frameworks/CoreFoundation.framework; sourceTree = SDKROOT; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		9EBA380FF7C4388CAA2B229D /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				436FBCD56024260E308BE1FD /* ApplicationServices.framework in Frameworks */,
+				ED496D6D9E310E4C156BC992 /* AudioToolbox.framework in Frameworks */,
+				8EA17421A35AF95415C58558 /* AudioUnit.framework in Frameworks */,
+				CF7BD8092ABC63A9A444B050 /* CoreAudio.framework in Frameworks */,
+				66C62216D562DDA0B0A63DFF /* CoreFoundation.framework in Frameworks */,
+				081E8AD5523E266E16B5828D /* CoreGraphics.framework in Frameworks */,
+				D163400422464C7479F5826D /* Foundation.framework in Frameworks */,
+				39F257234558CA5B82951973 /* IOBluetooth.framework in Frameworks */,
+				E0F2D8256E46F369FCF8C016 /* IOKit.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		0616891E023E4D382CF196BE /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				7E350879E0DE9F9CCD9512BD /* sony-head-tracker-LICENSE.txt */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		29B320F5D1BA29F58E586836 /* Bridge */ = {
+			isa = PBXGroup;
+			children = (
+				7B02E31ADB0CE9BFAF975FF1 /* sony_head_tracker_c.h */,
+				536E749A3BD2434574B0FBED /* sony_head_tracker_c.mm */,
+				0C60018A336232672ECB4A6E /* SonyHeadTracker-Bridging-Header.h */,
+			);
+			path = Bridge;
+			sourceTree = "<group>";
+		};
+		3D577DBFCF283ACFF5082A78 /* sony-head-tracker */ = {
+			isa = PBXGroup;
+			children = (
+				C2F9C41BB1389FA318A44E30 /* src */,
+			);
+			name = "sony-head-tracker";
+			path = ..;
+			sourceTree = "<group>";
+		};
+		6F2AD0B86F67190C0A06E6D3 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				C79DB4590B76CCDF6E061447 /* SonyHeadTracker.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		707A506287BF3929782A17FA /* Frameworks */ = {
+			isa = PBXGroup;
+			children = (
+				506A672646D0CB67100CC980 /* ApplicationServices.framework */,
+				3191103EC508B2981515C6F0 /* AudioToolbox.framework */,
+				CA69B4B0E56B92A4B43B0A57 /* AudioUnit.framework */,
+				64680560E8318135696DA8DB /* CoreAudio.framework */,
+				F963E308D0F58EB754403012 /* CoreFoundation.framework */,
+				DB7304492BEA2C9800502C22 /* CoreGraphics.framework */,
+				158AE709B7596E412F48EF5C /* Foundation.framework */,
+				D5DA244F1CAAFA4A50F68EF9 /* IOBluetooth.framework */,
+				0B9159787B5CFAB48E69DEE7 /* IOKit.framework */,
+			);
+			name = Frameworks;
+			sourceTree = "<group>";
+		};
+		C2F9C41BB1389FA318A44E30 /* src */ = {
+			isa = PBXGroup;
+			children = (
+				549781900B7CA60A77EDB1A7 /* app_config.cpp */,
+				98A5EA1C9E01F022AFB03AC3 /* diagnostics.cpp */,
+				1BA4E319390C07F0F6DE49E1 /* hid_descriptor.cpp */,
+				077319700403B822B8DB2AE0 /* math.cpp */,
+				D5C62FF3A911EED1981974FF /* orientation.cpp */,
+				763F1C9BC372FEA90A1AC090 /* protocol.cpp */,
+				D842D488D0C7B02733E60C6E /* macos */,
+			);
+			path = src;
+			sourceTree = "<group>";
+		};
+		D842D488D0C7B02733E60C6E /* macos */ = {
+			isa = PBXGroup;
+			children = (
+				F40F5A329A1248331A020DB8 /* app_config_store_macos.cpp */,
+				D40B4A35F4C3E3C44811D1DA /* audio_wake_macos.cpp */,
+				78EB3292059146F2A0273000 /* bluetooth_recovery_macos.mm */,
+				8B47D2F79E1B1E590F762079 /* hid_backend_macos.cpp */,
+				0BAD2732D11F1AE2FF4EFC15 /* logger_macos.cpp */,
+				B618EA34A612431C2F5FA1B9 /* output_udp_posix.cpp */,
+			);
+			path = macos;
+			sourceTree = "<group>";
+		};
+		E4F9C1F5370BD494A1CAD3E6 = {
+			isa = PBXGroup;
+			children = (
+				EAECBB3F667D049DBAA6896C /* App */,
+				29B320F5D1BA29F58E586836 /* Bridge */,
+				0616891E023E4D382CF196BE /* Resources */,
+				3D577DBFCF283ACFF5082A78 /* sony-head-tracker */,
+				707A506287BF3929782A17FA /* Frameworks */,
+				6F2AD0B86F67190C0A06E6D3 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		EAECBB3F667D049DBAA6896C /* App */ = {
+			isa = PBXGroup;
+			children = (
+				57ECFF6A3BEA62099BC6C526 /* ConnectionHeaderView.swift */,
+				2BB6D69A88980345D0973074 /* ContentView.swift */,
+				61712B65784595D9A8EC1939 /* DeviceInspectorView.swift */,
+				85AB0BDDF50C2CB193F2672A /* OrientationReadoutView.swift */,
+				C78FFBC579ED5EBDB86536E6 /* OutputStatusView.swift */,
+				EE6C9FDE4C86168B6C012A43 /* SettingsView.swift */,
+				8619A5D4EB161FB47852E08F /* SonyHeadTrackerApp.swift */,
+				660B695BC8FC1213EE604D00 /* TelemetryGraphView.swift */,
+				755A30628F3220CAF8A88E9E /* ThirdPartyLicensesView.swift */,
+				C80C44B2C03987C9BCDBF11C /* TrackerModel.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		0C70FECFA919218706CDE120 /* SonyHeadTracker */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = D2A43C39A07859328816236C /* Build configuration list for PBXNativeTarget "SonyHeadTracker" */;
+			buildPhases = (
+				2B5142B66E7638E63B0D8DE3 /* Sources */,
+				C534353E0D33DDE179CBE21E /* Resources */,
+				9EBA380FF7C4388CAA2B229D /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SonyHeadTracker;
+			packageProductDependencies = (
+			);
+			productName = SonyHeadTracker;
+			productReference = C79DB4590B76CCDF6E061447 /* SonyHeadTracker.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E06083BEE9F750A9A3743C07 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					0C70FECFA919218706CDE120 = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = FCF758AD542E3EDE5006739A /* Build configuration list for PBXProject "SonyHeadTracker" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = E4F9C1F5370BD494A1CAD3E6;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 6F2AD0B86F67190C0A06E6D3 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				0C70FECFA919218706CDE120 /* SonyHeadTracker */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		C534353E0D33DDE179CBE21E /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0959063305D822A6F1843FD0 /* sony-head-tracker-LICENSE.txt in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		2B5142B66E7638E63B0D8DE3 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				0B51999772C3E23AE86657B0 /* ConnectionHeaderView.swift in Sources */,
+				385D4634CF329EC910DF4661 /* ContentView.swift in Sources */,
+				84889FCE31EB32F16FA29D39 /* DeviceInspectorView.swift in Sources */,
+				0B87475B9FB3894D26E3C2DF /* OrientationReadoutView.swift in Sources */,
+				CA838837E9F0DB12F8598570 /* OutputStatusView.swift in Sources */,
+				5E0ED9E187D13A86EDC28E70 /* SettingsView.swift in Sources */,
+				3901A2D654090962785DC47C /* SonyHeadTrackerApp.swift in Sources */,
+				BCAA55F6DC4DF4E9E1DDC62D /* TelemetryGraphView.swift in Sources */,
+				94320DF0303172B266164C2D /* ThirdPartyLicensesView.swift in Sources */,
+				6D725E5FC929794D20F8BDD1 /* TrackerModel.swift in Sources */,
+				8E6C4D11BD5D15DF18D34BEB /* app_config.cpp in Sources */,
+				3977F6F65634D6A75BEBCF7E /* app_config_store_macos.cpp in Sources */,
+				963E53FE2F8246AA21D801AC /* audio_wake_macos.cpp in Sources */,
+				95144D41D03A9844A06E2330 /* bluetooth_recovery_macos.mm in Sources */,
+				501E1CC54596EDB911AB6D5C /* diagnostics.cpp in Sources */,
+				3033BF10A56BA010D172AB37 /* hid_backend_macos.cpp in Sources */,
+				FD36DA6D0527D56D31AE91D5 /* hid_descriptor.cpp in Sources */,
+				03596DCC34136684D5CB4A84 /* logger_macos.cpp in Sources */,
+				2A4BB2B630C2D4E405DBC43B /* math.cpp in Sources */,
+				6F2791B86DF2CF1090F0C9E5 /* orientation.cpp in Sources */,
+				C9D1AF198C9CCE6E05C9B90B /* output_udp_posix.cpp in Sources */,
+				6E362FB3E70CDB105E05B2E3 /* protocol.cpp in Sources */,
+				29C7931EA0B75ADE6D7A17AF /* sony_head_tracker_c.mm in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		64E58F40FC826EF571AA171D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_OBJC_ARC = NO;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = NO;
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/../include",
+					"$(PROJECT_DIR)/Bridge",
+				);
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.NicholasSlattery.SonyHeadTracker;
+				PRODUCT_NAME = SonyHeadTracker;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Bridge/SonyHeadTracker-Bridging-Header.h";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		7F1356A94FB0CC468C089BCB /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CLANG_CXX_LANGUAGE_STANDARD = "c++20";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_OBJC_ARC = NO;
+				CODE_SIGN_STYLE = Automatic;
+				COMBINE_HIDPI_IMAGES = YES;
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_HARDENED_RUNTIME = YES;
+				HEADER_SEARCH_PATHS = (
+					"$(PROJECT_DIR)/../include",
+					"$(PROJECT_DIR)/Bridge",
+				);
+				INFOPLIST_FILE = Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = io.github.NicholasSlattery.SonyHeadTracker;
+				PRODUCT_NAME = SonyHeadTracker;
+				SDKROOT = macosx;
+				SWIFT_OBJC_BRIDGING_HEADER = "$(PROJECT_DIR)/Bridge/SonyHeadTracker-Bridging-Header.h";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		DFD1F6F28A7ABFEFC2C762A7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+		EEC9E1A4C10B719FF9113425 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				MACOSX_DEPLOYMENT_TARGET = 14.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = macosx;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		D2A43C39A07859328816236C /* Build configuration list for PBXNativeTarget "SonyHeadTracker" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				64E58F40FC826EF571AA171D /* Debug */,
+				7F1356A94FB0CC468C089BCB /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FCF758AD542E3EDE5006739A /* Build configuration list for PBXProject "SonyHeadTracker" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				DFD1F6F28A7ABFEFC2C762A7 /* Debug */,
+				EEC9E1A4C10B719FF9113425 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E06083BEE9F750A9A3743C07 /* Project object */;
+}

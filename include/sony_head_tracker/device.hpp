@@ -32,6 +32,7 @@ struct DeviceInfo {
     std::wstring product;
     std::wstring manufacturer;
     std::wstring bluetoothName;   // paired Bluetooth device name, resolved via the PnP parent chain
+    std::wstring bluetoothAddress; // retained internally for exact paired-device recovery; never print unredacted
     std::uint16_t usagePage{};
     std::uint16_t usage{};
     std::uint16_t vendorId{};

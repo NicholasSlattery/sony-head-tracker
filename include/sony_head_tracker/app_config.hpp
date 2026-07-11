@@ -43,8 +43,8 @@ std::string appConfigToJson(const AppConfig& config);
 // the default-constructed config.
 AppConfig appConfigFromJson(std::string_view json);
 
-// --- Windows persistence (app_config_store.cpp) ----------------------------
-std::wstring appConfigPath();                                     // %LOCALAPPDATA%\SonyHeadTracker\config.json
+// --- Platform persistence (app_config_store.cpp / app_config_store_macos.cpp)
+std::wstring appConfigPath();                                     // platform configuration path
 AppConfig loadAppConfig();                                        // reads appConfigPath(); defaults if absent/unreadable
 bool saveAppConfig(const AppConfig& config);                     // creates the folder and writes appConfigPath()
 bool exportAppConfig(const AppConfig& config, const std::wstring& path);
