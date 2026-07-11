@@ -83,23 +83,49 @@ The macOS port includes a native SwiftUI application and a command-line bridge.
 It discovers devices by the Android Head Tracker HID descriptor instead of by
 model name, VID/PID, report ID, or report length.
 
+Choose **one** of the following ways to run Sony Head Tracker. You do not need
+to build or run both. Both options require full Xcode selected with
+`xcode-select`; the command-line option additionally requires CMake 3.25 or
+later.
+
+#### Option 1 — Native macOS application (recommended)
+
+The application does not require a separate CMake build. From the repository
+root, run:
+
+```bash
+./script/build_and_run.sh
+```
+
+The script builds the committed Xcode project, applies a stable local development
+signature when one is available, and opens `SonyHeadTracker.app`.
+
+#### Option 2 — Command-line bridge
+
+Use this option when you want a Terminal-only bridge without the SwiftUI
+application:
+
 ```bash
 cmake -S . -B build/macos -DCMAKE_BUILD_TYPE=Release
 cmake --build build/macos --target sony-head-tracker-macos --parallel
 ./build/macos/sony-head-tracker-macos bridge
 ```
 
-For the native application, run the repository script. Regenerate the committed
-Xcode project first only after changing `macos/project.yml`:
+Do not run the application and CLI bridge at the same time; they would compete
+for the same tracker and send duplicate data to the same loopback UDP ports.
+
+XcodeGen is **not** required for a normal build. Regenerate the committed Xcode
+project only after changing `macos/project.yml`:
 
 ```bash
-# Optional after project.yml changes: (cd macos && xcodegen generate)
-./script/build_and_run.sh
+cd macos
+xcodegen generate
 ```
 
 On first use, allow Sony Head Tracker under **System Settings > Privacy &
-Security > Input Monitoring**. See the complete setup, device-support status,
-ULT WEAR audio activation note, and troubleshooting steps in
+Security > Input Monitoring**, then quit and reopen the application or CLI.
+See the complete setup, device-support status, ULT WEAR audio activation note,
+and troubleshooting steps in
 [`docs/MACOS.md`](docs/MACOS.md).
 
 > **Hardware status:** changing orientation reports have been received from a
