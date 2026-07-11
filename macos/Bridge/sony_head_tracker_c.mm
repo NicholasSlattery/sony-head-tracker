@@ -138,7 +138,12 @@ struct SHTHandle {
 namespace {
 
 void notifyStatus(SHTHandle& handle, SHTStatus status, std::string message) noexcept {
-    if (status == SHT_STATUS_PERMISSION_DENIED || status >= SHT_STATUS_NOT_VISIBLE) {
+    if (status == SHT_STATUS_CONNECTED) {
+        std::lock_guard lock(handle.diagnosticsMutex);
+        handle.lastErrorCategory = "none";
+        handle.lastError = "(none)";
+    } else if (status == SHT_STATUS_PERMISSION_DENIED ||
+               status >= SHT_STATUS_NOT_VISIBLE) {
         std::lock_guard lock(handle.diagnosticsMutex);
         if (status == SHT_STATUS_PERMISSION_DENIED) handle.lastErrorCategory = "permission";
         else if (status == SHT_STATUS_NOT_VISIBLE) handle.lastErrorCategory = "notVisible";
@@ -229,6 +234,8 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
         std::wstring trackedProduct;
         std::size_t backoffIndex{};
         unsigned bluetoothRecoveryStage{};
+        std::size_t consecutiveStreamTimeouts{};
+        bool streamRecoveryPending{};
         notifyStatus(handle, SHT_STATUS_SCANNING, "Scanning for Android Head Tracker");
 
         while (!stop.stop_requested()) {
@@ -236,6 +243,31 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
             {
                 std::lock_guard lock(handle.diagnosticsMutex);
                 handle.candidateCount = devices.size();
+            }
+            if (streamRecoveryPending) {
+                const auto action = sony::streamRecoveryAction(consecutiveStreamTimeouts);
+                if (action != sony::StreamRecoveryAction::reopenHid &&
+                    (!trackedAddress.empty() || !trackedProduct.empty())) {
+                    const bool forceBasebandReconnect =
+                        action == sony::StreamRecoveryAction::forceBasebandReconnect;
+                    notifyStatus(
+                        handle,
+                        SHT_STATUS_RECONNECTING,
+                        forceBasebandReconnect
+                            ? "No samples after IOHID recycle; reconnecting the paired headset and refreshing HID services"
+                            : "Recycling IOHID and refreshing the paired headset HID services");
+                    sony::recoverPairedBluetoothHid(
+                        trackedAddress, trackedProduct, forceBasebandReconnect);
+                    devices = handle.hid.enumerate();
+                    {
+                        std::lock_guard lock(handle.diagnosticsMutex);
+                        handle.candidateCount = devices.size();
+                    }
+                } else {
+                    notifyStatus(handle, SHT_STATUS_RECONNECTING,
+                                 "Reopening the IOHID backend after a stalled stream");
+                }
+                streamRecoveryPending = false;
             }
             auto selected = std::find_if(devices.begin(), devices.end(),
                                          [](const auto& device) {
@@ -311,19 +343,39 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
                 notifyStatus(handle, SHT_STATUS_FEATURE_WRITE_FAILED,
                              "The verified tracker rejected feature configuration; include the feature read-back log in a report");
             } else {
-                bluetoothRecoveryStage = 0;
-                backoffIndex = 0;
                 handle.audioWake.start(trackedProduct, trackedAddress);
                 const auto configuredAt = std::chrono::steady_clock::now();
-                bool timeoutReported{};
+                bool healthyStream{};
+                bool streamTimedOut{};
                 while (!stop.stop_requested() && handle.hid.connected()) {
-                    if (!firstSampleReported && !timeoutReported &&
+                    if (firstSampleReported.load() && !healthyStream) {
+                        healthyStream = true;
+                        consecutiveStreamTimeouts = 0;
+                        bluetoothRecoveryStage = 0;
+                        backoffIndex = 0;
+                    }
+                    if (!firstSampleReported.load() &&
                         std::chrono::steady_clock::now() - configuredAt >= 5s) {
-                        timeoutReported = true;
+                        bool waitingForSample = false;
+                        if (!firstSampleReported.compare_exchange_strong(
+                                waitingForSample, true)) {
+                            continue;
+                        }
+                        // The timeout now owns this connection's terminal
+                        // transition. A callback arriving concurrently cannot
+                        // publish Connected immediately before teardown.
+                        streamTimedOut = true;
+                        ++consecutiveStreamTimeouts;
+                        streamRecoveryPending = true;
                         notifyStatus(handle, SHT_STATUS_STREAM_TIMEOUT,
-                                     "Tracker configured but no valid sample arrived; power-cycle the headset or relaunch the app");
+                                     "Tracker configured but no valid sample arrived; recycling the IOHID backend automatically");
+                        break;
                     }
                     std::this_thread::sleep_for(100ms);
+                }
+                if (streamTimedOut) {
+                    notifyStatus(handle, SHT_STATUS_RECONNECTING,
+                                 "Stream stalled; closing the current IOHID session before retrying");
                 }
             }
             handle.audioWake.stop();
@@ -336,9 +388,12 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
                 const auto delay = sony::reconnectBackoffSeconds(backoffIndex);
                 if (backoffIndex < 4) ++backoffIndex;
                 if (connected) {
-                    notifyStatus(handle, SHT_STATUS_RECONNECTING,
-                                 std::format("Tracker disconnected; retrying in {} second(s)",
-                                             delay));
+                    notifyStatus(
+                        handle,
+                        SHT_STATUS_RECONNECTING,
+                        streamRecoveryPending
+                            ? std::format("Stalled stream closed; retrying in {} second(s)", delay)
+                            : std::format("Tracker disconnected; retrying in {} second(s)", delay));
                 }
                 if (waitForStop(stop, std::chrono::seconds(delay))) break;
             }

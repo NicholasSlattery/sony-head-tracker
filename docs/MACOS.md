@@ -181,8 +181,12 @@ or included in UDP output.
 
 Some ULT WEAR sessions expose the collection before samples resume. The CLI can
 perform one clean child-process recovery rather than looping indefinitely. The
-SwiftUI engine keeps reconnecting through its normal backend lifecycle and
-reports the current state to the user.
+SwiftUI engine treats a configured connection with no valid sample for five
+seconds as a stalled stream: it closes the current silent-audio and IOHID
+session, refreshes SDP, and retries with bounded backoff. A second consecutive
+stall performs one paired-device baseband reconnect; later retries reopen IOHID
+without repeatedly dropping Bluetooth. Recovery state is cleared only after a
+valid sample arrives.
 
 ## Differences from the original Windows implementation
 

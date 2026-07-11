@@ -60,4 +60,18 @@ inline unsigned reconnectBackoffSeconds(std::size_t attempt) {
     return delays[std::min(attempt, delays.size() - 1)];
 }
 
+enum class StreamRecoveryAction {
+    refreshServices,
+    forceBasebandReconnect,
+    reopenHid,
+};
+
+// Escalate a stalled, configured stream only once per step. Continued stalls
+// recycle IOHID with bounded backoff instead of repeatedly dropping Bluetooth.
+inline StreamRecoveryAction streamRecoveryAction(std::size_t consecutiveTimeouts) {
+    if (consecutiveTimeouts <= 1) return StreamRecoveryAction::refreshServices;
+    if (consecutiveTimeouts == 2) return StreamRecoveryAction::forceBasebandReconnect;
+    return StreamRecoveryAction::reopenHid;
+}
+
 } // namespace sony

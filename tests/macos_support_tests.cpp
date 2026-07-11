@@ -46,3 +46,10 @@ TEST(macos_reconnect_backoff_is_bounded) {
     CHECK(reconnectBackoffSeconds(4) == 30);
     CHECK(reconnectBackoffSeconds(1000) == 30);
 }
+
+TEST(macos_stream_recovery_escalates_without_repeated_baseband_reconnects) {
+    CHECK(streamRecoveryAction(1) == StreamRecoveryAction::refreshServices);
+    CHECK(streamRecoveryAction(2) == StreamRecoveryAction::forceBasebandReconnect);
+    CHECK(streamRecoveryAction(3) == StreamRecoveryAction::reopenHid);
+    CHECK(streamRecoveryAction(1000) == StreamRecoveryAction::reopenHid);
+}
