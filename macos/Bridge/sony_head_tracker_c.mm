@@ -286,7 +286,7 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
                         SHT_STATUS_RECONNECTING,
                         "Recycling IOHID and refreshing the paired headset HID services");
                     sony::recoverPairedBluetoothHid(
-                        trackedAddress, trackedProduct, false);
+                        trackedAddress, trackedProduct, false, stop);
                     devices = handle.hid.enumerate();
                     {
                         std::lock_guard lock(handle.diagnosticsMutex);
@@ -309,7 +309,7 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
                                  ? "Refreshing the paired headset HID services"
                                  : "Reconnecting the paired headset and refreshing HID services");
                 const auto recovery = sony::recoverPairedBluetoothHid(
-                    trackedAddress, trackedProduct, bluetoothRecoveryStage == 1);
+                    trackedAddress, trackedProduct, bluetoothRecoveryStage == 1, stop);
                 if (recovery.pairedDeviceFound && recovery.connected) {
                     ++bluetoothRecoveryStage;
                     devices = handle.hid.enumerate();

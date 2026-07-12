@@ -21,7 +21,7 @@ jobs:
       - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
 
       - name: Configure
-        run: cmake -S . -B build/macos -DCMAKE_BUILD_TYPE=Release
+        run: cmake -S . -B build/macos -DCMAKE_BUILD_TYPE=Release -DSHT_WARNINGS_AS_ERRORS=ON
 
       - name: Build tests
         run: cmake --build build/macos --target sony_head_tracker_tests sony_head_tracker_c_api_tests --parallel
@@ -37,6 +37,25 @@ jobs:
           xcodebuild -project macos/SonyHeadTracker.xcodeproj
           -scheme SonyHeadTracker -configuration Debug
           -derivedDataPath build/DerivedData CODE_SIGNING_ALLOWED=NO build
+
+  macos-sanitizers:
+    name: AddressSanitizer + UBSan (macOS)
+    runs-on: macos-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+
+      - name: Configure sanitizer build
+        run: >-
+          cmake -S . -B build/macos-sanitizers -DCMAKE_BUILD_TYPE=Debug
+          -DSHT_ENABLE_SANITIZERS=ON -DSHT_WARNINGS_AS_ERRORS=ON
+
+      - name: Build sanitizer tests
+        run: cmake --build build/macos-sanitizers --target sony_head_tracker_tests sony_head_tracker_c_api_tests --parallel
+
+      - name: Run sanitizer tests
+        run: ctest --test-dir build/macos-sanitizers --output-on-failure
 
   build:
     name: Build & test (MSVC x64)

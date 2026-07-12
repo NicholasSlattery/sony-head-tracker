@@ -97,8 +97,10 @@ root, run:
 ./script/build_and_run.sh
 ```
 
-The script builds the committed Xcode project, applies a stable local development
-signature when one is available, and opens `SonyHeadTracker.app`.
+The script builds the committed Xcode project and opens `SonyHeadTracker.app`.
+It does not inspect or use signing identities unless you explicitly opt in with
+`SHT_ENABLE_STABLE_SIGNING=1`; see the macOS guide for the Input Monitoring
+continuity workflow.
 
 #### Option 2 — Command-line bridge
 

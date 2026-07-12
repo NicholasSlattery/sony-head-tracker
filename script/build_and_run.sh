@@ -13,7 +13,8 @@ DEBUG_ENTITLEMENTS="$ROOT_DIR/macos/Debug.entitlements"
 export DEVELOPER_DIR="/Applications/Xcode.app/Contents/Developer"
 
 stable_sign_if_available() {
-  if [[ "${SHT_SKIP_STABLE_SIGNING:-0}" == "1" ]]; then
+  if [[ "${SHT_ENABLE_STABLE_SIGNING:-0}" != "1" ]]; then
+    echo "Stable signing is disabled. Set SHT_ENABLE_STABLE_SIGNING=1 to opt in." >&2
     return
   fi
 

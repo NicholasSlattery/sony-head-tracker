@@ -30,8 +30,9 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
   disconnecting the headset's Bluetooth baseband connection.
 - macOS reconnect backoff now wakes as soon as the exact paired headset reconnects
   or its Android Head Tracker IOHID collection becomes visible.
-- The macOS build/run script now uses a unique local Apple Development identity,
-  when available, so Input Monitoring permission survives local rebuilds.
+- The macOS build/run script can use a unique local Apple Development identity,
+  only after explicit opt-in with `SHT_ENABLE_STABLE_SIGNING=1`, so Input
+  Monitoring permission can survive local rebuilds without default Keychain access.
 - Portable floating-point configuration parsing now uses a classic-locale
   stream instead of libc++ floating-point `from_chars`, preserving the macOS 14
   deployment target.

@@ -2,6 +2,7 @@
 // Uses public IOBluetooth APIs to reconnect the exact paired headset and
 // refresh its SDP services so macOS can recreate the Bluetooth HID collection.
 #include "sony_head_tracker/bluetooth_recovery.hpp"
+#include "sony_head_tracker/macos_support.hpp"
 
 #import <Foundation/Foundation.h>
 #import <IOBluetooth/IOBluetooth.h>
@@ -147,6 +148,16 @@ void runLoopFor(std::chrono::milliseconds duration) {
     }
 }
 
+BluetoothConnectionWaitResult waitForConnection(IOBluetoothDevice* device,
+                                                std::stop_token stop) {
+    return waitForBluetoothConnection(
+        true,
+        [&] { return device.isConnected; },
+        [&](std::chrono::milliseconds duration) { runLoopFor(duration); },
+        [&] { return stop.stop_requested(); },
+        [] { return std::chrono::steady_clock::now(); });
+}
+
 NSURL* recoveryIdentityURL(bool createDirectory) {
     NSFileManager* files = [NSFileManager defaultManager];
     NSURL* applicationSupport = [[files URLsForDirectory:NSApplicationSupportDirectory
@@ -204,7 +215,8 @@ bool saveLastVerifiedBluetoothAddress(std::wstring_view bluetoothAddress) {
 BluetoothRecoveryResult recoverPairedBluetoothHid(
     std::wstring_view bluetoothAddress,
     std::wstring_view fallbackProductName,
-    bool forceBasebandReconnect) {
+    bool forceBasebandReconnect,
+    std::stop_token stop) {
     BluetoothRecoveryResult result;
     @autoreleasepool {
         IOBluetoothDevice* device = exactPairedDevice(
@@ -218,33 +230,54 @@ BluetoothRecoveryResult recoverPairedBluetoothHid(
             result.closeStatus = static_cast<std::int32_t>([device closeConnection]);
             const auto disconnectDeadline = std::chrono::steady_clock::now() +
                                             std::chrono::seconds(2);
-            while (device.isConnected && std::chrono::steady_clock::now() < disconnectDeadline) {
+            while (!stop.stop_requested() && device.isConnected &&
+                   std::chrono::steady_clock::now() < disconnectDeadline) {
                 runLoopFor(std::chrono::milliseconds(50));
+            }
+            if (stop.stop_requested()) {
+                result.cancelled = true;
+                return result;
             }
         }
 
+        bool opened = true;
         if (!device.isConnected) {
             result.openStatus = static_cast<std::int32_t>([device openConnection]);
+            opened = result.openStatus == kIOReturnSuccess;
         }
-        result.connected = device.isConnected;
-        if (!result.connected) return result;
+        const auto connectionResult = opened
+            ? waitForConnection(device, stop)
+            : BluetoothConnectionWaitResult::openFailed;
+        result.connected = connectionResult == BluetoothConnectionWaitResult::connected;
+        result.connectionTimedOut = connectionResult == BluetoothConnectionWaitResult::timedOut;
+        result.cancelled = connectionResult == BluetoothConnectionWaitResult::cancelled;
+        if (!bluetoothConnectionConfirmed(connectionResult, device.isConnected)) {
+            result.connected = false;
+            return result;
+        }
 
         // Refresh the paired device's published services through SDP. Recovery
         // deliberately does not change HID ignore state or driver bindings.
         NSDate* before = [device getLastServicesUpdate];
         const auto beforeTime = before ? before.timeIntervalSinceReferenceDate : -1.0;
+        if (stop.stop_requested() ||
+            !bluetoothConnectionConfirmed(connectionResult, device.isConnected)) return result;
         result.sdpStartStatus = static_cast<std::int32_t>([device performSDPQuery:nil]);
         result.sdpQueryStarted = result.sdpStartStatus == kIOReturnSuccess;
         if (result.sdpQueryStarted) {
             const auto sdpDeadline = std::chrono::steady_clock::now() +
                                      std::chrono::seconds(5);
-            while (std::chrono::steady_clock::now() < sdpDeadline) {
+            while (!stop.stop_requested() && std::chrono::steady_clock::now() < sdpDeadline) {
                 runLoopFor(std::chrono::milliseconds(50));
                 NSDate* updated = [device getLastServicesUpdate];
                 if (updated && updated.timeIntervalSinceReferenceDate > beforeTime) {
                     result.sdpQueryCompleted = true;
                     break;
                 }
+            }
+            if (stop.stop_requested()) {
+                result.cancelled = true;
+                return result;
             }
         }
         runLoopFor(std::chrono::milliseconds(500));
