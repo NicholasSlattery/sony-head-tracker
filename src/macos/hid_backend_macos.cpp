@@ -990,9 +990,10 @@ bool HidBackend::connect(const DeviceInfo& device, RawCallback raw, SampleCallba
     context->sample = std::move(sample);
     context_ = std::move(context);
     running_ = true;
+    readerStop_.reset();
     std::promise<void> scheduled;
     auto scheduledFuture = scheduled.get_future();
-    reader_ = std::jthread([this, scheduled = std::move(scheduled)](std::stop_token stop) mutable {
+    reader_ = std::thread([this, scheduled = std::move(scheduled)]() mutable {
         auto* current = context_.get();
         current->runLoop = reinterpret_cast<CFRunLoopRef>(const_cast<void*>(CFRetain(CFRunLoopGetCurrent())));
         Logger::instance().write(
@@ -1008,7 +1009,7 @@ bool HidBackend::connect(const DeviceInfo& device, RawCallback raw, SampleCallba
         IOHIDDeviceScheduleWithRunLoop(current->device, current->runLoop, kCFRunLoopDefaultMode);
         scheduled.set_value();
         bool firstRun = true;
-        while (!stop.stop_requested() && !current->removed) {
+        while (!readerStop_.stopRequested() && !current->removed) {
             const auto result = CFRunLoopRunInMode(kCFRunLoopDefaultMode, 0.1, true);
             if (firstRun) {
                 Logger::instance().write(
@@ -1034,7 +1035,7 @@ bool HidBackend::connect(const DeviceInfo& device, RawCallback raw, SampleCallba
 void HidBackend::disconnect() {
     running_ = false;
     if (reader_.joinable()) {
-        reader_.request_stop();
+        readerStop_.requestStop();
         if (context_ && context_->runLoop) CFRunLoopStop(context_->runLoop);
         reader_.join();
     }

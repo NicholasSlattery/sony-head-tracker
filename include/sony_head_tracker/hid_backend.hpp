@@ -5,6 +5,7 @@
 // forward-declared Context), so this header is includable anywhere.
 #pragma once
 
+#include "sony_head_tracker/cancellation.hpp"
 #include "sony_head_tracker/device.hpp"
 #include "sony_head_tracker/types.hpp"
 
@@ -35,7 +36,8 @@ public:
 
 private:
     std::unique_ptr<Context> context_;
-    std::jthread reader_;
+    std::thread reader_;
+    CancellationFlag readerStop_;
     std::atomic_bool running_{};
 };
 

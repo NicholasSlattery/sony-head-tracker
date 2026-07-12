@@ -149,12 +149,12 @@ void runLoopFor(std::chrono::milliseconds duration) {
 }
 
 BluetoothConnectionWaitResult waitForConnection(IOBluetoothDevice* device,
-                                                std::stop_token stop) {
+                                                const CancellationFlag* cancellation) {
     return waitForBluetoothConnection(
         true,
         [&] { return device.isConnected; },
         [&](std::chrono::milliseconds duration) { runLoopFor(duration); },
-        [&] { return stop.stop_requested(); },
+        [cancellation] { return cancellation && cancellation->stopRequested(); },
         [] { return std::chrono::steady_clock::now(); });
 }
 
@@ -216,7 +216,7 @@ BluetoothRecoveryResult recoverPairedBluetoothHid(
     std::wstring_view bluetoothAddress,
     std::wstring_view fallbackProductName,
     bool forceBasebandReconnect,
-    std::stop_token stop) {
+    const CancellationFlag* cancellation) {
     BluetoothRecoveryResult result;
     @autoreleasepool {
         IOBluetoothDevice* device = exactPairedDevice(
@@ -230,11 +230,11 @@ BluetoothRecoveryResult recoverPairedBluetoothHid(
             result.closeStatus = static_cast<std::int32_t>([device closeConnection]);
             const auto disconnectDeadline = std::chrono::steady_clock::now() +
                                             std::chrono::seconds(2);
-            while (!stop.stop_requested() && device.isConnected &&
+            while (!(cancellation && cancellation->stopRequested()) && device.isConnected &&
                    std::chrono::steady_clock::now() < disconnectDeadline) {
                 runLoopFor(std::chrono::milliseconds(50));
             }
-            if (stop.stop_requested()) {
+            if (cancellation && cancellation->stopRequested()) {
                 result.cancelled = true;
                 return result;
             }
@@ -246,7 +246,7 @@ BluetoothRecoveryResult recoverPairedBluetoothHid(
             opened = result.openStatus == kIOReturnSuccess;
         }
         const auto connectionResult = opened
-            ? waitForConnection(device, stop)
+            ? waitForConnection(device, cancellation)
             : BluetoothConnectionWaitResult::openFailed;
         result.connected = connectionResult == BluetoothConnectionWaitResult::connected;
         result.connectionTimedOut = connectionResult == BluetoothConnectionWaitResult::timedOut;
@@ -260,14 +260,14 @@ BluetoothRecoveryResult recoverPairedBluetoothHid(
         // deliberately does not change HID ignore state or driver bindings.
         NSDate* before = [device getLastServicesUpdate];
         const auto beforeTime = before ? before.timeIntervalSinceReferenceDate : -1.0;
-        if (stop.stop_requested() ||
+        if ((cancellation && cancellation->stopRequested()) ||
             !bluetoothConnectionConfirmed(connectionResult, device.isConnected)) return result;
         result.sdpStartStatus = static_cast<std::int32_t>([device performSDPQuery:nil]);
         result.sdpQueryStarted = result.sdpStartStatus == kIOReturnSuccess;
         if (result.sdpQueryStarted) {
             const auto sdpDeadline = std::chrono::steady_clock::now() +
                                      std::chrono::seconds(5);
-            while (!stop.stop_requested() && std::chrono::steady_clock::now() < sdpDeadline) {
+            while (!(cancellation && cancellation->stopRequested()) && std::chrono::steady_clock::now() < sdpDeadline) {
                 runLoopFor(std::chrono::milliseconds(50));
                 NSDate* updated = [device getLastServicesUpdate];
                 if (updated && updated.timeIntervalSinceReferenceDate > beforeTime) {
@@ -275,7 +275,7 @@ BluetoothRecoveryResult recoverPairedBluetoothHid(
                     break;
                 }
             }
-            if (stop.stop_requested()) {
+            if (cancellation && cancellation->stopRequested()) {
                 result.cancelled = true;
                 return result;
             }

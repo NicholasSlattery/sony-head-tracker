@@ -4,8 +4,9 @@
 // identified by IOHID. No Objective-C types cross this interface.
 #pragma once
 
+#include "sony_head_tracker/cancellation.hpp"
+
 #include <cstdint>
-#include <stop_token>
 #include <string_view>
 
 namespace sony {
@@ -34,7 +35,7 @@ BluetoothRecoveryResult recoverPairedBluetoothHid(
     std::wstring_view bluetoothAddress,
     std::wstring_view fallbackProductName,
     bool forceBasebandReconnect,
-    std::stop_token stop = {});
+    const CancellationFlag* cancellation = nullptr);
 
 // Read-only availability check for the exact previously verified paired
 // headset. Used to wake reconnect backoff without changing Bluetooth state.

@@ -281,18 +281,18 @@ bool HidBackend::connect(const DeviceInfo& device, RawCallback raw, SampleCallba
     const auto featureValues=getValueCaps(HidP_Feature,ctx->ppd.value,ctx->caps.NumberFeatureValueCaps);
     const auto featureButtons=getButtonCaps(HidP_Feature,ctx->ppd.value,ctx->caps.NumberFeatureButtonCaps);
     if(!configureHeadTrackerFeatures(ctx->handle.value,ctx->ppd.value,ctx->caps,featureValues,featureButtons)){Logger::instance().write(LogLevel::error,L"Head tracker feature configuration failed");return false;}
-    ctx->raw=std::move(raw);ctx->sample=std::move(sample);context_=std::move(ctx);running_=true;
-    reader_=std::jthread([this](std::stop_token stop) {
+    ctx->raw=std::move(raw);ctx->sample=std::move(sample);context_=std::move(ctx);running_=true;readerStop_.reset();
+    reader_=std::thread([this] {
         auto* c=context_.get(); std::vector<std::uint8_t> report(c->caps.InputReportByteLength);
         Handle event(CreateEventW(nullptr,TRUE,FALSE,nullptr));
         OVERLAPPED ov{}; ov.hEvent=event.value;
-        while(!stop.stop_requested()) {
+        while(!readerStop_.stopRequested()) {
             DWORD bytes{}; ResetEvent(event.value);
             if(!ReadFile(c->handle.value,report.data(),static_cast<DWORD>(report.size()),&bytes,&ov)&&GetLastError()!=ERROR_IO_PENDING) {
                 Logger::instance().write(LogLevel::error,std::format(L"HID read failed: {}",windowsError(GetLastError())));break;
             }
-            while(!stop.stop_requested()) { const auto wait=WaitForSingleObject(event.value,100);if(wait==WAIT_OBJECT_0)break;if(wait==WAIT_FAILED)break; }
-            if(stop.stop_requested()) { CancelIoEx(c->handle.value,&ov);break; }
+            while(!readerStop_.stopRequested()) { const auto wait=WaitForSingleObject(event.value,100);if(wait==WAIT_OBJECT_0)break;if(wait==WAIT_FAILED)break; }
+            if(readerStop_.stopRequested()) { CancelIoEx(c->handle.value,&ov);break; }
             if(!GetOverlappedResult(c->handle.value,&ov,&bytes,FALSE)) { Logger::instance().write(LogLevel::error,std::format(L"HID asynchronous read failed: {}",windowsError(GetLastError())));break; }
             if(bytes==0)continue;report.resize(bytes);if(c->raw)c->raw(report);
             MotionSample s;s.receivedAt=std::chrono::steady_clock::now();bool gotRotation=false;
@@ -327,7 +327,7 @@ bool HidBackend::connect(const DeviceInfo& device, RawCallback raw, SampleCallba
 }
 
 void HidBackend::disconnect() {
-    running_=false;if(reader_.joinable()){reader_.request_stop();if(context_&&context_->handle.value!=INVALID_HANDLE_VALUE)CancelIoEx(context_->handle.value,nullptr);reader_.join();}context_.reset();
+    running_=false;if(reader_.joinable()){readerStop_.requestStop();if(context_&&context_->handle.value!=INVALID_HANDLE_VALUE)CancelIoEx(context_->handle.value,nullptr);reader_.join();}context_.reset();
 }
 
 std::wstring hexDump(const std::vector<std::uint8_t>& bytes) {

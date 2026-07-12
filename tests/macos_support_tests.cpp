@@ -1,5 +1,6 @@
 #include "test_framework.hpp"
 
+#include "sony_head_tracker/cancellation.hpp"
 #include "sony_head_tracker/macos_support.hpp"
 
 #include <array>
@@ -7,6 +8,15 @@
 #include <limits>
 
 using namespace sony;
+
+TEST(macos_cancellation_flag_can_be_requested_and_reused) {
+    CancellationFlag cancellation;
+    CHECK(!cancellation.stopRequested());
+    cancellation.requestStop();
+    CHECK(cancellation.stopRequested());
+    cancellation.reset();
+    CHECK(!cancellation.stopRequested());
+}
 
 TEST(macos_report_interval_uses_smallest_nonzero_valid_raw_value) {
     DescriptorField field;

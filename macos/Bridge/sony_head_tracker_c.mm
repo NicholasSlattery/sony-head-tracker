@@ -3,6 +3,7 @@
 #include "sony_head_tracker/audio_wake.hpp"
 #include "sony_head_tracker/app_config.hpp"
 #include "sony_head_tracker/bluetooth_recovery.hpp"
+#include "sony_head_tracker/cancellation.hpp"
 #include "sony_head_tracker/device.hpp"
 #include "sony_head_tracker/hid_backend.hpp"
 #include "sony_head_tracker/logger.hpp"
@@ -112,7 +113,8 @@ struct SHTHandle {
     sony::HidBackend hid;
     sony::UdpOutput udp;
     sony::SilentAudioWake audioWake;
-    std::jthread worker;
+    std::thread worker;
+    sony::CancellationFlag stop;
     std::atomic_bool running{};
     std::atomic_bool recenterRequested{};
     SHTSampleCallback sampleCallback{};
@@ -203,7 +205,7 @@ enum class ReconnectWaitResult {
 };
 
 ReconnectWaitResult waitForReconnect(
-    std::stop_token stop,
+    const sony::CancellationFlag& stop,
     std::chrono::seconds duration,
     std::wstring_view trackedAddress,
     std::wstring_view trackedProduct,
@@ -215,7 +217,7 @@ ReconnectWaitResult waitForReconnect(
         return ReconnectWaitResult::availabilityChanged;
     }
     auto nextAvailabilityCheck = std::chrono::steady_clock::now() + 250ms;
-    while (!stop.stop_requested() && std::chrono::steady_clock::now() < deadline) {
+    while (!stop.stopRequested() && std::chrono::steady_clock::now() < deadline) {
         const auto now = std::chrono::steady_clock::now();
         if (now >= nextAvailabilityCheck) {
             const auto current = sony::queryPairedTrackerAvailability(
@@ -232,11 +234,11 @@ ReconnectWaitResult waitForReconnect(
         }
         std::this_thread::sleep_for(50ms);
     }
-    return stop.stop_requested() ? ReconnectWaitResult::stopped
+    return stop.stopRequested() ? ReconnectWaitResult::stopped
                                  : ReconnectWaitResult::elapsed;
 }
 
-void runEngine(SHTHandle& handle, std::stop_token stop,
+void runEngine(SHTHandle& handle, const sony::CancellationFlag& stop,
                std::uint16_t basePort) noexcept {
     try {
         const auto hidAccess = IOHIDCheckAccess(kIOHIDRequestTypeListenEvent);
@@ -271,7 +273,7 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
         bool streamRecoveryPending{};
         notifyStatus(handle, SHT_STATUS_SCANNING, "Scanning for Android Head Tracker");
 
-        while (!stop.stop_requested()) {
+        while (!stop.stopRequested()) {
             auto devices = handle.hid.enumerate();
             {
                 std::lock_guard lock(handle.diagnosticsMutex);
@@ -286,7 +288,7 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
                         SHT_STATUS_RECONNECTING,
                         "Recycling IOHID and refreshing the paired headset HID services");
                     sony::recoverPairedBluetoothHid(
-                        trackedAddress, trackedProduct, false, stop);
+                        trackedAddress, trackedProduct, false, &stop);
                     devices = handle.hid.enumerate();
                     {
                         std::lock_guard lock(handle.diagnosticsMutex);
@@ -309,7 +311,7 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
                                  ? "Refreshing the paired headset HID services"
                                  : "Reconnecting the paired headset and refreshing HID services");
                 const auto recovery = sony::recoverPairedBluetoothHid(
-                    trackedAddress, trackedProduct, bluetoothRecoveryStage == 1, stop);
+                    trackedAddress, trackedProduct, bluetoothRecoveryStage == 1, &stop);
                 if (recovery.pairedDeviceFound && recovery.connected) {
                     ++bluetoothRecoveryStage;
                     devices = handle.hid.enumerate();
@@ -384,7 +386,7 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
                 const auto configuredAt = std::chrono::steady_clock::now();
                 bool healthyStream{};
                 bool streamTimedOut{};
-                while (!stop.stop_requested() && handle.hid.connected()) {
+                while (!stop.stopRequested() && handle.hid.connected()) {
                     if (firstSampleReported.load() && !healthyStream) {
                         healthyStream = true;
                         consecutiveStreamTimeouts = 0;
@@ -418,7 +420,7 @@ void runEngine(SHTHandle& handle, std::stop_token stop,
             }
             handle.audioWake.stop();
             handle.hid.disconnect();
-            if (!stop.stop_requested()) {
+            if (!stop.stopRequested()) {
                 {
                     std::lock_guard lock(handle.diagnosticsMutex);
                     ++handle.reconnectAttempts;
@@ -477,7 +479,7 @@ void stopHandle(SHTHandle& handle) noexcept {
             handle.running = false;
             return;
         }
-        handle.worker.request_stop();
+        handle.stop.requestStop();
         lock.unlock();
         handle.worker.join();
         lock.lock();
@@ -536,9 +538,10 @@ extern "C" bool sht_start(SHTHandle *handle,
             handle->lastPacketRate = -1.0;
             handle->lastSampleAt = {};
         }
-        handle->worker = std::jthread(
-            [handle, base_port](std::stop_token stop) {
-                runEngine(*handle, stop, base_port);
+        handle->stop.reset();
+        handle->worker = std::thread(
+            [handle, base_port] {
+                runEngine(*handle, handle->stop, base_port);
             });
         return true;
     } catch (...) {
