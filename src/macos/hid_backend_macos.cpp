@@ -39,6 +39,8 @@ namespace sony {
 
 namespace {
 
+constexpr CFIndex kMaximumFeatureReportBytes = 64 * 1024;
+
 class CfObject {
 public:
     CfObject() = default;
@@ -154,7 +156,7 @@ std::string findMarker(IOHIDDeviceRef device, CFArrayRef elements) {
 
     const auto maxSize = static_cast<CFIndex>(cfNumber(IOHIDDeviceGetProperty(
         device, CFSTR(kIOHIDMaxFeatureReportSizeKey))));
-    if (maxSize <= 0) return {};
+    if (maxSize <= 0 || maxSize > kMaximumFeatureReportBytes) return {};
     std::vector<std::uint32_t> reportIds;
     for (CFIndex index = 0; index < count; ++index) {
         auto element = static_cast<IOHIDElementRef>(const_cast<void*>(CFArrayGetValueAtIndex(elements, index)));
@@ -476,8 +478,44 @@ void collectElements(HidBackend::Context& context) {
     }
 }
 
+bool revalidateFeatureWriteTarget(HidBackend::Context& context) {
+    if (!context.device || !context.elements ||
+        !IOHIDDeviceConformsTo(context.device, kSensorPage, kOtherCustom)) {
+        Logger::instance().write(LogLevel::error,
+                                 L"Reacquired device no longer exposes the Android Head Tracker usage");
+        return false;
+    }
+    const auto marker = findMarker(context.device, context.elements);
+    if (!marker.starts_with(kMarker)) {
+        Logger::instance().write(LogLevel::error,
+                                 L"Reacquired device no longer exposes a verified Android Head Tracker marker");
+        return false;
+    }
+    const auto maxFeatureBytes = static_cast<CFIndex>(cfNumber(
+        IOHIDDeviceGetProperty(context.device, CFSTR(kIOHIDMaxFeatureReportSizeKey))));
+    if (maxFeatureBytes <= 0 || maxFeatureBytes > kMaximumFeatureReportBytes ||
+        context.featureElements.empty()) {
+        Logger::instance().write(LogLevel::error,
+                                 L"Reacquired device exposes an unsafe or incomplete feature-report layout");
+        return false;
+    }
+    DeviceInfo candidate;
+    candidate.usagePage = kSensorPage;
+    candidate.usage = kOtherCustom;
+    candidate.androidHeadTracker = true;
+    candidate.fields.reserve(context.featureElements.size());
+    for (const auto& record : context.featureElements) candidate.fields.push_back(record.field);
+    if (!canConfigureFeatureReports(candidate)) {
+        Logger::instance().write(LogLevel::error,
+                                 L"Reacquired device exposes an incomplete or ambiguous feature-report layout");
+        return false;
+    }
+    return true;
+}
+
 bool setFeatureInteger(HidBackend::Context& context, std::uint16_t usage, CFIndex rawValue,
                        std::wstring_view label, bool required) {
+    if (!revalidateFeatureWriteTarget(context)) return false;
     for (const auto& record : context.featureElements) {
         if (record.field.usagePage != kSensorPage || record.field.usage != usage) continue;
         IOHIDValueRef value = IOHIDValueCreateWithIntegerValue(kCFAllocatorDefault, record.element, 0, rawValue);
@@ -510,6 +548,7 @@ bool setFeatureInteger(HidBackend::Context& context, std::uint16_t usage, CFInde
 bool setSelector(HidBackend::Context& context, std::uint16_t desired,
                  std::uint16_t groupMin, std::uint16_t groupMax,
                  std::wstring_view label) {
+    if (!revalidateFeatureWriteTarget(context)) return false;
     const ElementRecord* selected = nullptr;
     for (const auto& record : context.featureElements) {
         if (record.field.usagePage == kSensorPage && record.field.usage == desired) {
@@ -605,13 +644,17 @@ bool readFeatureReport(HidBackend::Context& context, std::uint8_t reportId,
                        std::vector<std::uint8_t>& report) {
     const auto maxSize = static_cast<CFIndex>(cfNumber(IOHIDDeviceGetProperty(
         context.device, CFSTR(kIOHIDMaxFeatureReportSizeKey))));
-    if (maxSize <= 0) return false;
+    if (maxSize <= 0 || maxSize > kMaximumFeatureReportBytes) {
+        Logger::instance().write(LogLevel::error,
+                                 L"Feature report size is missing or exceeds the safety limit");
+        return false;
+    }
     report.assign(static_cast<std::size_t>(maxSize), 0);
     CFIndex length = maxSize;
     const auto result = IOHIDDeviceGetReport(
         context.device, kIOHIDReportTypeFeature, reportId,
         report.data(), &length);
-    if (result != kIOReturnSuccess || length <= 0) {
+    if (result != kIOReturnSuccess || length <= 0 || length > maxSize) {
         Logger::instance().write(
             LogLevel::error,
             std::format(L"Feature report {} read failed (IOKit=0x{:08X})",
@@ -647,10 +690,15 @@ std::vector<RawFeatureField> featureLayout(HidBackend::Context& context) {
             existing->records.push_back(&record);
             continue;
         }
-        const auto bits = static_cast<std::size_t>(record.field.bitSize) *
-                          std::max<std::size_t>(record.field.reportCount, 1);
+        const auto count = std::max<std::size_t>(record.field.reportCount, 1);
+        if (record.field.bitSize != 0 &&
+            count > std::numeric_limits<std::size_t>::max() / record.field.bitSize) {
+            return {};
+        }
+        const auto bits = static_cast<std::size_t>(record.field.bitSize) * count;
         if (bits == 0) continue;
         auto& offset = nextBit[record.field.reportId];
+        if (bits > std::numeric_limits<std::size_t>::max() - offset) return {};
         layout.push_back({identity, record.field.reportId, offset, bits, {&record}});
         offset += bits;
     }
@@ -706,30 +754,13 @@ bool appendSelectorAssignment(const std::vector<RawFeatureField>& layout,
     return true;
 }
 
-bool writeBits(std::vector<std::uint8_t>& report, std::size_t payloadBytes,
-               std::size_t bitOffset, std::size_t bitSize, std::uint64_t value) {
-    if (bitSize == 0 || bitSize > 64 || payloadBytes * 8 + bitOffset + bitSize > report.size() * 8) {
-        return false;
+std::optional<FeatureReportLayout> explicitReportLayout(
+    const std::vector<RawFeatureField>& fields, std::uint8_t reportId) {
+    std::vector<DescriptorField> descriptorFields;
+    for (const auto& field : fields) {
+        for (const auto* record : field.records) descriptorFields.push_back(record->field);
     }
-    const auto base = payloadBytes * 8 + bitOffset;
-    for (std::size_t bit = 0; bit < bitSize; ++bit) {
-        const auto absolute = base + bit;
-        const auto mask = static_cast<std::uint8_t>(1u << (absolute % 8));
-        if ((value >> bit) & 1u) report[absolute / 8] |= mask;
-        else report[absolute / 8] &= static_cast<std::uint8_t>(~mask);
-    }
-    return true;
-}
-
-std::uint64_t readBits(const std::vector<std::uint8_t>& report, std::size_t payloadBytes,
-                       std::size_t bitOffset, std::size_t bitSize) {
-    std::uint64_t value{};
-    const auto base = payloadBytes * 8 + bitOffset;
-    for (std::size_t bit = 0; bit < bitSize; ++bit) {
-        const auto absolute = base + bit;
-        if ((report[absolute / 8] >> (absolute % 8)) & 1u) value |= std::uint64_t{1} << bit;
-    }
-    return value;
+    return featureReportLayoutFor(descriptorFields, reportId);
 }
 
 bool ensureRawFeatureConfiguration(HidBackend::Context& context) {
@@ -753,18 +784,28 @@ bool ensureRawFeatureConfiguration(HidBackend::Context& context) {
     std::map<std::uint8_t, std::vector<RawAssignment>> byReport;
     for (const auto& assignment : assignments) byReport[assignment.reportId].push_back(assignment);
     for (const auto& [reportId, reportAssignments] : byReport) {
+        const auto reportLayout = explicitReportLayout(layout, reportId);
+        if (!reportLayout) {
+            Logger::instance().write(LogLevel::error,
+                                     std::format(L"Feature report {} has ambiguous report-ID metadata", reportId));
+            return false;
+        }
         std::vector<std::uint8_t> before;
         if (!readFeatureReport(context, reportId, before)) return false;
         auto after = before;
-        std::size_t reportBits{};
-        for (const auto& field : layout) {
-            if (field.reportId == reportId) reportBits = std::max(reportBits, field.bitOffset + field.bitSize);
+        if (reportLayout->hasReportIdPrefix &&
+            (before.empty() || before.front() != reportId)) {
+            Logger::instance().write(LogLevel::error,
+                                     std::format(L"Feature report {} is missing its descriptor-declared ID prefix", reportId));
+            return false;
         }
-        const std::size_t payloadBytes = before.size() * 8 >= reportBits + 8 &&
-                                         !before.empty() && before[0] == reportId ? 1 : 0;
         for (const auto& assignment : reportAssignments) {
-            if (!writeBits(after, payloadBytes, assignment.bitOffset,
-                           assignment.bitSize, assignment.value)) {
+            // Prove each requested range fits the original report before any
+            // modification, not merely the copy that will be written.
+            if (!readFeatureBits(before, *reportLayout, assignment.bitOffset,
+                                 assignment.bitSize).has_value() ||
+                !writeFeatureBits(after, *reportLayout, assignment.bitOffset,
+                                  assignment.bitSize, assignment.value)) {
                 Logger::instance().write(LogLevel::error,
                                          std::format(L"Raw feature field {} is outside report {}",
                                                      assignment.label, reportId));
@@ -772,6 +813,7 @@ bool ensureRawFeatureConfiguration(HidBackend::Context& context) {
             }
         }
         if (after != before) {
+            if (!revalidateFeatureWriteTarget(context)) return false;
             const auto result = IOHIDDeviceSetReport(
                 context.device, kIOHIDReportTypeFeature, reportId,
                 after.data(), static_cast<CFIndex>(after.size()));
@@ -788,11 +830,16 @@ bool ensureRawFeatureConfiguration(HidBackend::Context& context) {
         }
         std::vector<std::uint8_t> verified;
         if (!readFeatureReport(context, reportId, verified)) return false;
-        const std::size_t verifiedPayload = verified.size() * 8 >= reportBits + 8 &&
-                                            !verified.empty() && verified[0] == reportId ? 1 : 0;
+        if (reportLayout->hasReportIdPrefix &&
+            (verified.empty() || verified.front() != reportId)) {
+            Logger::instance().write(LogLevel::error,
+                                     std::format(L"Feature read-back {} is missing its descriptor-declared ID prefix", reportId));
+            return false;
+        }
         for (const auto& assignment : reportAssignments) {
-            if (readBits(verified, verifiedPayload, assignment.bitOffset,
-                         assignment.bitSize) != assignment.value) {
+            const auto readback = readFeatureBits(verified, *reportLayout,
+                                                  assignment.bitOffset, assignment.bitSize);
+            if (!readback || *readback != assignment.value) {
                 Logger::instance().write(LogLevel::error,
                                          std::format(L"Raw feature verification failed for {}",
                                                      assignment.label));

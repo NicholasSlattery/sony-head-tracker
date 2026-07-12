@@ -5,6 +5,20 @@ set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_CXX_EXTENSIONS OFF)
 
+option(SHT_ENABLE_SANITIZERS "Enable AddressSanitizer and UndefinedBehaviorSanitizer" OFF)
+option(SHT_WARNINGS_AS_ERRORS "Treat Clang warnings as errors for this build" OFF)
+
+function(sht_apply_macos_hardening target)
+    target_compile_options(${target} PRIVATE -Wall -Wextra -Wpedantic)
+    if(SHT_WARNINGS_AS_ERRORS)
+        target_compile_options(${target} PRIVATE -Werror)
+    endif()
+    if(SHT_ENABLE_SANITIZERS)
+        target_compile_options(${target} PRIVATE -fsanitize=address,undefined -fno-omit-frame-pointer)
+        target_link_options(${target} PRIVATE -fsanitize=address,undefined INTERFACE -fsanitize=address,undefined)
+    endif()
+endfunction()
+
 add_library(sony_head_tracker_core STATIC
     src/math.cpp
     src/orientation.cpp
@@ -14,9 +28,9 @@ add_library(sony_head_tracker_core STATIC
     src/diagnostics.cpp
 )
 target_include_directories(sony_head_tracker_core PUBLIC include)
-target_compile_options(sony_head_tracker_core PRIVATE
-    $<$<CXX_COMPILER_ID:AppleClang,Clang>:-Wall;-Wextra;-Wpedantic>
-)
+if(CMAKE_CXX_COMPILER_ID MATCHES "AppleClang|Clang")
+    sht_apply_macos_hardening(sony_head_tracker_core)
+endif()
 
 enable_testing()
 add_executable(sony_head_tracker_tests
@@ -52,9 +66,7 @@ if(APPLE)
         "-framework IOBluetooth"
         "-framework IOKit"
     )
-    target_compile_options(sony_head_tracker_macos_platform PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
+    sht_apply_macos_hardening(sony_head_tracker_macos_platform)
 
     add_library(sony_head_tracker_macos_bridge STATIC
         macos/Bridge/sony_head_tracker_c.mm
@@ -63,9 +75,7 @@ if(APPLE)
     target_link_libraries(sony_head_tracker_macos_bridge PUBLIC
         sony_head_tracker_macos_platform
     )
-    target_compile_options(sony_head_tracker_macos_bridge PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
+    sht_apply_macos_hardening(sony_head_tracker_macos_bridge)
 
     add_executable(sony-head-tracker-macos
         src/macos/main_macos.cpp
@@ -73,16 +83,17 @@ if(APPLE)
     target_link_libraries(sony-head-tracker-macos PRIVATE
         sony_head_tracker_macos_platform
     )
-    target_compile_options(sony-head-tracker-macos PRIVATE
-        -Wall -Wextra -Wpedantic
-    )
+    sht_apply_macos_hardening(sony-head-tracker-macos)
 
     add_executable(sony_head_tracker_c_api_tests
         tests/test_main.cpp
         tests/c_api_tests.cpp
+        tests/macos_persistence_tests.cpp
     )
     target_link_libraries(sony_head_tracker_c_api_tests PRIVATE
         sony_head_tracker_macos_bridge
     )
+    sht_apply_macos_hardening(sony_head_tracker_tests)
+    sht_apply_macos_hardening(sony_head_tracker_c_api_tests)
     add_test(NAME c-api COMMAND sony_head_tracker_c_api_tests)
 endif()

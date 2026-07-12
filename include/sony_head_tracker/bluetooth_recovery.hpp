@@ -5,6 +5,7 @@
 #pragma once
 
 #include <cstdint>
+#include <stop_token>
 #include <string_view>
 
 namespace sony {
@@ -14,6 +15,8 @@ struct BluetoothRecoveryResult {
     bool wasConnected{};
     bool connected{};
     bool forcedBasebandReconnect{};
+    bool connectionTimedOut{};
+    bool cancelled{};
     bool sdpQueryStarted{};
     bool sdpQueryCompleted{};
     std::int32_t closeStatus{};
@@ -30,7 +33,8 @@ struct TrackerAvailability {
 BluetoothRecoveryResult recoverPairedBluetoothHid(
     std::wstring_view bluetoothAddress,
     std::wstring_view fallbackProductName,
-    bool forceBasebandReconnect);
+    bool forceBasebandReconnect,
+    std::stop_token stop = {});
 
 // Read-only availability check for the exact previously verified paired
 // headset. Used to wake reconnect backoff without changing Bluetooth state.

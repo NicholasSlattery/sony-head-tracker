@@ -81,21 +81,23 @@ services after a power cycle.
 An ad-hoc signed Debug build has a designated requirement based on that build's
 code hash. macOS can therefore treat the next build as a different executable
 even though System Settings still shows an older `SonyHeadTracker` entry as
-enabled. The committed `build_and_run.sh` avoids that when possible: after Xcode
-builds the app, it detects exactly one valid Apple Development identity in the
-login keychain and re-signs the bundle with that stable identity before launch.
+enabled. The committed `build_and_run.sh` does not inspect the Keychain or sign
+anything by default. To opt in, set `SHT_ENABLE_STABLE_SIGNING=1`; the script
+then detects exactly one valid Apple Development identity in the login keychain
+and re-signs the bundle with that stable identity before launch.
 No certificate name, hash, Team ID, or account information is stored in the
 repository.
 
 If more than one Apple Development identity is installed, choose one explicitly:
 
 ```bash
+SHT_ENABLE_STABLE_SIGNING=1 \
 SHT_CODE_SIGN_IDENTITY="certificate SHA-1 hash or exact name" \
   ./script/build_and_run.sh
 ```
 
-Set `SHT_SKIP_STABLE_SIGNING=1` to retain Xcode's local ad-hoc signature. When no
-suitable identity exists, rebuilding can require removing the stale App entry
+Without `SHT_ENABLE_STABLE_SIGNING=1`, the script retains Xcode's local ad-hoc
+signature. When no suitable identity exists, rebuilding can require removing the stale App entry
 from Input Monitoring, adding the newly built App, enabling it, and restarting
 the App. Building directly in Xcode can instead use a development team selected
 under the target's Signing & Capabilities settings.
@@ -147,8 +149,8 @@ The Xcode project is committed and can be built directly. After changing
 ```
 
 The build script uses a stable DerivedData directory under `build/DerivedData`,
-builds the Debug app, applies a stable local development signature when one is
-available, and launches a new instance. It accepts `--debug`, `--logs`,
+builds the Debug app, optionally applies a stable local development signature
+only when `SHT_ENABLE_STABLE_SIGNING=1` is set, and launches a new instance. It accepts `--debug`, `--logs`,
 `--telemetry`, and `--verify` for development diagnostics.
 
 The app displays connection state, the selected device, yaw/pitch/roll,
