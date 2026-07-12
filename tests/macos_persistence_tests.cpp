@@ -76,6 +76,17 @@ TEST(macos_atomic_config_rejects_final_symlinks_and_invalid_parents) {
     CHECK(!sony::macos::writePrivateFileAtomically(parentFile / "config.json", "new"));
 }
 
+TEST(macos_atomic_config_allows_system_style_ancestor_symlinks) {
+    TemporaryDirectory temporary;
+    const auto realParent = temporary.path / "real-parent";
+    const auto aliasParent = temporary.path / "alias-parent";
+    CHECK(std::filesystem::create_directories(realParent));
+    CHECK(symlink(realParent.c_str(), aliasParent.c_str()) == 0);
+    const auto config = aliasParent / "SonyHeadTracker" / "config.json";
+    CHECK(sony::macos::writePrivateFileAtomically(config, "new"));
+    CHECK(sony::macos::readPrivateFile(config) == "new");
+}
+
 TEST(macos_atomic_config_handles_temp_collisions_and_partial_writes) {
     TemporaryDirectory temporary;
     const auto config = temporary.path / "config.json";

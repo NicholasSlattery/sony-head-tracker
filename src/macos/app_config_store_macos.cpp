@@ -57,16 +57,16 @@ namespace {
 
 bool ensurePrivateDirectory(const std::filesystem::path& directory) {
     if (directory.empty()) return false;
-    std::filesystem::path current = directory.root_path();
-    for (const auto& component : directory.relative_path()) {
-        if (component == "." || component == "..") return false;
-        current /= component;
-        if (::mkdir(current.c_str(), kPrivateDirectoryMode) != 0 && errno != EEXIST) return false;
-        struct stat status{};
-        if (::lstat(current.c_str(), &status) != 0 || S_ISLNK(status.st_mode) ||
-            !S_ISDIR(status.st_mode)) {
-            return false;
-        }
+    std::error_code error;
+    std::filesystem::create_directories(directory, error);
+    if (error) return false;
+    // macOS commonly exposes temporary homes below /var, a system symlink to
+    // /private/var. Ancestor symlinks are therefore permitted; only the
+    // application directory itself and the final file are security boundaries.
+    struct stat status{};
+    if (::lstat(directory.c_str(), &status) != 0 || S_ISLNK(status.st_mode) ||
+        !S_ISDIR(status.st_mode)) {
+        return false;
     }
     return ::chmod(directory.c_str(), kPrivateDirectoryMode) == 0;
 }
