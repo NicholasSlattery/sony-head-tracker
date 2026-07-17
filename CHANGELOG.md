@@ -6,6 +6,12 @@ follow [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
 
+### Added
+- Unit tests pinning which head movement becomes which angle: 30-degree
+  rotations about X and Y, plus an end-to-end check that the default axis
+  mapping sends a nod about the device's raw X axis to pitch and nothing else.
+  The suite previously covered yaw only, so a pitch/roll swap passed it.
+
 ## [2.2.0] - 2026-07-11
 
 macOS release. Sony Head Tracker now runs natively on macOS 14 or later, with

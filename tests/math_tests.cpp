@@ -4,6 +4,8 @@
 
 #include "sony_head_tracker/math.hpp"
 
+#include <numbers>
+
 using namespace sony;
 
 TEST(identity_quaternion_is_zero_euler) {
@@ -20,6 +22,47 @@ TEST(ninety_degree_yaw_about_z) {
     CHECK_NEAR(e.yaw, 90.0, 1e-6);
     CHECK_NEAR(e.pitch, 0.0, 1e-6);
     CHECK_NEAR(e.roll, 0.0, 1e-6);
+}
+
+TEST(thirty_degree_roll_about_x) {
+    // Rotation of 30 degrees about X: w = cos(15), x = sin(15).
+    const auto e = quaternionToEulerDegrees(Quaternion{0.96592582628906829, 0.25881904510252074, 0, 0});
+    CHECK_NEAR(e.yaw, 0.0, 1e-6);
+    CHECK_NEAR(e.pitch, 0.0, 1e-6);
+    CHECK_NEAR(e.roll, 30.0, 1e-6);
+}
+
+TEST(thirty_degree_pitch_about_y) {
+    // Rotation of 30 degrees about Y: w = cos(15), y = sin(15).
+    const auto e = quaternionToEulerDegrees(Quaternion{0.96592582628906829, 0, 0.25881904510252074, 0});
+    CHECK_NEAR(e.yaw, 0.0, 1e-6);
+    CHECK_NEAR(e.pitch, 30.0, 1e-6);
+    CHECK_NEAR(e.roll, 0.0, 1e-6);
+}
+
+TEST(default_mapping_sends_each_raw_axis_to_one_head_angle) {
+    // The default mapping is what turns a device's raw rotation vector into the
+    // frame the Euler extraction expects, so it decides which physical head
+    // movement becomes which angle: a nod about raw X has to leave as pitch and
+    // nothing else. Pinning all three axes end to end keeps a change to either
+    // the mapping or the extraction from silently swapping pitch and roll.
+    const AxisMapping def{{1, 0, 2}, {-1.0, 1.0, -1.0}};
+    constexpr double deg = 0.5 * 180.0 / std::numbers::pi;   // 0.5 rad in degrees
+
+    const auto nod = quaternionToEulerDegrees(rotationVectorToQuaternion(remap(Vec3{0.5, 0, 0}, def)));
+    CHECK_NEAR(nod.pitch, deg, 1e-6);
+    CHECK_NEAR(nod.yaw, 0.0, 1e-6);
+    CHECK_NEAR(nod.roll, 0.0, 1e-6);
+
+    const auto tilt = quaternionToEulerDegrees(rotationVectorToQuaternion(remap(Vec3{0, 0.5, 0}, def)));
+    CHECK_NEAR(tilt.roll, -deg, 1e-6);
+    CHECK_NEAR(tilt.yaw, 0.0, 1e-6);
+    CHECK_NEAR(tilt.pitch, 0.0, 1e-6);
+
+    const auto turn = quaternionToEulerDegrees(rotationVectorToQuaternion(remap(Vec3{0, 0, 0.5}, def)));
+    CHECK_NEAR(turn.yaw, -deg, 1e-6);
+    CHECK_NEAR(turn.pitch, 0.0, 1e-6);
+    CHECK_NEAR(turn.roll, 0.0, 1e-6);
 }
 
 TEST(rotation_vector_round_trip) {
